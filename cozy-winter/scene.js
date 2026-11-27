@@ -781,26 +781,94 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }, { repeat: [5, 4] });
 
 {
-  const fabric = cloth({ ...tiled(FLEECE, 6, 6), color: 0xf2e4d0 });
+  const fabric = cloth({ ...tiled(FLEECE, 7, 7), normalScale: new THREE.Vector2(1.35, 1.35), color: 0xf2e4d0 });
   const sofa = new THREE.Group();
   sofa.position.set(-1.95, 0, 2.6);
   scene.add(sofa);
-  mesh(new RoundedBoxGeometry(1.25, 0.42, 4.4, 4, 0.12), fabric, 0, 0.29, 0, sofa);
-  mesh(new RoundedBoxGeometry(1.05, 0.2, 2.1, 4, 0.09), fabric, 0.1, 0.58, -1.05, sofa);
-  mesh(new RoundedBoxGeometry(1.05, 0.2, 2.1, 4, 0.09), fabric, 0.1, 0.58, 1.08, sofa);
-  const back = mesh(new RoundedBoxGeometry(0.34, 0.82, 4.4, 4, 0.15), fabric, -0.5, 0.86, 0, sofa);
-  back.rotation.z = 0.12;
-  mesh(new RoundedBoxGeometry(1.25, 0.62, 0.32, 4, 0.14), fabric, 0, 0.55, -2.15, sofa);
-  for (const [px, pz, ry] of [[-0.18, -1.4, 0.25], [-0.2, -0.75, -0.15]]) {
-    const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), cloth({ map: plaidTex, ...tiled(LINEN, 2, 2, ['normalMap', 'roughnessMap']) }), px, 0.95, pz, sofa);
-    p.rotation.set(0, ry, 0.28);
+
+  // Softly crowned upholstery cushion with rounded edges and subtle fabric creases.
+  function cushionGeo(w, h, d, {
+    round = 0.28, crownX = 0.025, crownY = 0.05, crownZ = 0.02,
+    wrinkle = 0.008, dip = 0, pinch = 0, segs = [18, 10, 22], phase = 0,
+  } = {}) {
+    const geo = new THREE.BoxGeometry(w, h, d, segs[0], segs[1], segs[2]);
+    const pos = geo.attributes.position;
+    const hw = w / 2, hh = h / 2, hd = d / 2;
+    for (let i = 0; i < pos.count; i++) {
+      const nx = pos.getX(i) / hw, ny = pos.getY(i) / hh, nz = pos.getZ(i) / hd;
+      const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+      // Smooth superellipsoid corner/edge rounding
+      const p = 2 / Math.max(0.12, round);
+      const len = Math.pow(Math.pow(ax, p) + Math.pow(ay, p) + Math.pow(az, p), 1 / p);
+      const shrink = len > 1 ? 1 / len : 1;
+      let x = nx * hw * shrink, y = ny * hh * shrink, z = nz * hd * shrink;
+      // Gentle convex crown across faces
+      const cx = Math.cos(nx * Math.PI * 0.5);
+      const cy = Math.cos(ny * Math.PI * 0.5);
+      const cz = Math.cos(nz * Math.PI * 0.5);
+      x += Math.sign(nx) * crownX * cy * cz;
+      y += Math.sign(ny) * crownY * cx * cz;
+      z += Math.sign(nz) * crownZ * cx * cy;
+      // Subtle sitting depression on upper surface
+      if (dip && ny > 0) y -= dip * ny * Math.exp(-((nx * 1.4) ** 2 + (nz * 1.6) ** 2));
+      // Pinched-seam throw pillow profile (plump middle, tapered seam edges)
+      if (pinch) {
+        const edge = Math.max(ay, az);
+        const belly = Math.pow(Math.max(0, 1 - ny * ny) * Math.max(0, 1 - nz * nz), 0.35);
+        x = nx * hw * (0.14 + (1 - pinch + pinch * belly));
+        const cornerPull = 0.045 * Math.pow(ay * az, 2);
+        y += Math.sign(ny) * cornerPull;
+        z += Math.sign(nz) * cornerPull;
+        const seamRipple = 0.008 * Math.sin(ny * 7 + nz * 6 + phase) * edge;
+        x += Math.sign(nx) * seamRipple;
+      }
+      // Organic cloth ripples
+      const wv = wrinkle * (
+        Math.sin(nx * 5.2 + nz * 4.7 + phase) * 0.55 +
+        Math.sin(nz * 9.3 - ny * 6.1 + phase * 1.7) * 0.3 +
+        Math.cos(nx * 8.1 + ny * 5.4 - phase) * 0.15
+      );
+      x += nx * wv; y += ny * wv; z += nz * wv;
+      pos.setXYZ(i, x, y, z);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  // Upholstered base frame and short walnut legs
+  const legMat = interior({ ...tiled(WALNUT, 0.5, 0.5), roughness: 0.75, color: 0x5c3e2c });
+  for (const [lx, lz] of [[0.52, -2.05], [-0.52, -2.05], [0.52, 2.05], [-0.52, 2.05]]) {
+    mesh(new THREE.CylinderGeometry(0.032, 0.022, 0.10, 12), legMat, lx, 0.05, lz, sofa);
+  }
+  mesh(cushionGeo(1.24, 0.38, 4.38, { round: 0.22, crownX: 0.018, crownY: 0.01, crownZ: 0.012, wrinkle: 0.004, segs: [16, 8, 28], phase: 0.4 }), fabric, 0, 0.28, 0, sofa);
+
+  // Two plump seat cushions with slight sitting give and seam separation
+  mesh(cushionGeo(1.06, 0.22, 2.04, { round: 0.36, crownX: 0.028, crownY: 0.055, crownZ: 0.022, wrinkle: 0.009, dip: 0.028, segs: [20, 10, 26], phase: 1.1 }), fabric, 0.11, 0.56, -1.04, sofa);
+  mesh(cushionGeo(1.06, 0.22, 2.04, { round: 0.36, crownX: 0.028, crownY: 0.055, crownZ: 0.022, wrinkle: 0.009, dip: 0.022, segs: [20, 10, 26], phase: 2.7 }), fabric, 0.11, 0.56, 1.05, sofa);
+
+  // Back frame + two separate plump back cushions
+  const backFrame = mesh(cushionGeo(0.24, 0.78, 4.36, { round: 0.26, crownX: 0.015, crownY: 0.02, crownZ: 0.015, wrinkle: 0.004, segs: [10, 12, 24], phase: 0.8 }), fabric, -0.56, 0.84, 0, sofa);
+  backFrame.rotation.z = 0.10;
+  for (const [bz, ph] of [[-1.02, 3.4], [1.02, 5.2]]) {
+    const bc = mesh(cushionGeo(0.28, 0.62, 1.98, { round: 0.44, crownX: 0.055, crownY: 0.035, crownZ: 0.025, wrinkle: 0.010, segs: [12, 16, 22], phase: ph }), fabric, -0.37, 0.94, bz, sofa);
+    bc.rotation.z = 0.16;
+  }
+
+  // Softly rolled armrest
+  mesh(cushionGeo(1.24, 0.60, 0.32, { round: 0.42, crownX: 0.022, crownY: 0.042, crownZ: 0.024, wrinkle: 0.006, segs: [18, 12, 10], phase: 4.1 }), fabric, 0.01, 0.54, -2.14, sofa);
+
+  // Plump, edge-pinched plaid throw pillows
+  const pillowMat = cloth({ map: plaidTex, ...tiled(LINEN, 2, 2, ['normalMap', 'roughnessMap']), normalScale: new THREE.Vector2(1.2, 1.2) });
+  for (const [px, py, pz, ry, rz, ph] of [[-0.10, 0.92, -1.42, 0.24, 0.30, 0.9], [-0.12, 0.90, -0.78, -0.18, 0.26, 2.3]]) {
+    const p = mesh(cushionGeo(0.21, 0.50, 0.52, { round: 0.50, crownX: 0.035, crownY: 0.015, crownZ: 0.015, wrinkle: 0.007, pinch: 0.82, segs: [10, 18, 18], phase: ph }), pillowMat, px, py, pz, sofa);
+    p.rotation.set(0, ry, rz);
   }
   const knit = cloth({ map: knitTex, ...tiled(LINEN, 5, 4, ['normalMap', 'roughnessMap']),
     color: 0xe7dac5, sheenRoughness: 0.6, side: THREE.DoubleSide });
   // Walk one sheet over the seat, around the rounded cushion edge and down to its hem.
   const profile = new THREE.CatmullRomCurve3([
-    [-0.30, 0.71], [0.04, 0.71], [0.38, 0.70], [0.54, 0.69],
-    [0.62, 0.65], [0.65, 0.55], [0.66, 0.38], [0.70, 0.20],
+    [-0.24, 0.73], [0.08, 0.74], [0.40, 0.73], [0.57, 0.70],
+    [0.65, 0.64], [0.67, 0.53], [0.68, 0.36], [0.71, 0.18],
   ].map(([x, y]) => new THREE.Vector3(x, y, 0)));
   const throwGeo = new THREE.PlaneGeometry(1, 1, 48, 80);
   const { position, uv } = throwGeo.attributes;
