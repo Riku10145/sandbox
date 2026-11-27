@@ -57,7 +57,7 @@ const FOG = new THREE.Color(0x58677f);
 scene.background = FOG.clone();
 scene.fog = new THREE.FogExp2(FOG, 0.03);
 
-const camera = new THREE.PerspectiveCamera(40, W / H, 0.05, 200);
+const camera = new THREE.PerspectiveCamera(41, W / H, 0.05, 200);
 
 const updates = [];
 
@@ -1472,8 +1472,8 @@ const grade = new ShaderPass({
 composer.addPass(grade);
 
 // ---------- timeline ----------
-const camFrom = { p: new THREE.Vector3(0.35, 1.68, 6.4), t: new THREE.Vector3(0.35, 1.22, -3) };
-const camTo = { p: new THREE.Vector3(0.05, 1.6, 5.75), t: new THREE.Vector3(0.15, 1.28, -3) };
+const camFrom = { p: new THREE.Vector3(-0.56, 1.05, 5.10), t: new THREE.Vector3(0.88, 1.30, -3) };
+const camTo = { p: new THREE.Vector3(-0.42, 1.03, 4.80), t: new THREE.Vector3(0.76, 1.34, -3) };
 const look = new THREE.Vector3();
 const debugCam = params.get('cam')?.split(',').map(Number);
 
