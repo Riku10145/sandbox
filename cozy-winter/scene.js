@@ -7,6 +7,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const params = new URLSearchParams(location.search);
 const W = Number(params.get('w') ?? 1920);
@@ -481,8 +484,41 @@ for (const [x, z, h, r] of [
   [0.2, -26, 3.2, 1.2], [14, -20, 3.5, 1.4],
 ]) pineTree(x, z, h, r);
 
-bareTree(2.9, -7.6, 9.0, 1.05, 7);
-bareTree(-4.6, -11.5, 7.5, 1.0, 6);
+{
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('./node_modules/three/examples/jsm/libs/basis/')
+    .detectSupport(renderer);
+  const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const bareTreeAsset = await gltfLoader.loadAsync('./models/spooky-tree-lod1.glb');
+  ktx2.dispose();
+  bareTreeAsset.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const mat = o.material;
+    mat.envMap = skyEnv;
+    mat.envMapIntensity = 1.0;
+    mat.fog = true;
+    mat.roughness = Math.max(mat.roughness ?? 0.9, 0.85);
+    // Dust upward-facing bark and limbs with winter snow.
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vSnowUp;')
+        .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nvSnowUp = normalize(mat3(modelMatrix) * objectNormal).y;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vSnowUp;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.93), smoothstep(0.60, 0.92, vSnowUp) * 0.65);');
+    };
+  });
+  for (const [x, z, scale, rotY] of [
+    [2.9, -7.6, 0.94, 0.7],
+    [-4.95, -11.5, 0.88, 2.55],
+  ]) {
+    const inst = bareTreeAsset.scene.clone(true);
+    inst.position.set(x, GROUND_Y - 0.12, z);
+    inst.scale.setScalar(scale);
+    inst.rotation.y = rotY;
+    scene.add(inst);
+  }
+}
 for (const [x, z, h] of [
   [-9, -16, 6.5], [-12, -23, 7], [7.5, -12, 6], [-3.5, -23, 6.5], [6, -31, 7.5], [-6, -38, 7],
   [16, -27, 7], [1, -40, 8], [-17, -28, 7], [12, -36, 7.5],

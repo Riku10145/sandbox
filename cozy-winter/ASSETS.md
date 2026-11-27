@@ -17,6 +17,14 @@ The files were fetched through the Poly Haven API. Its terms, <https://github.co
 | Beige Wall 001 | <https://polyhaven.com/a/beige_wall_001> | Interior walls | 2k Diffuse, nor_gl, Rough |
 | Snow 02 | <https://polyhaven.com/a/snow_02> | Outdoor ground, roofs, snow banks (normal and roughness only) | 2k Diffuse, nor_gl, Rough |
 
+## tevy 3D models
+
+Site terms, <https://tevy.dev/> and <https://tevy.dev/docs>: all assets are CC0 1.0, free for any use including commercial use and redistribution, with no attribution required. The asset page below also shows "CC0 1.0" (checked on 2026-11-28).
+
+| Asset | Page | Used for | File in `models/` |
+|---|---|---|---|
+| Spooky Dead Tree (v1, LOD1) | <https://tevy.dev/models/spooky-tree> | Two foreground leafless trees outside the window | `spooky-tree-lod1.glb` |
+
 ## Other
 
 | Asset | Source | License | Terms checked |
