@@ -36,6 +36,9 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 function castShadows(light, size = 1024) {
   if (!FX.has('shadow')) return light;
   light.castShadow = true;
+  // The lamps flicker in intensity; their positions and all shadow casters are static.
+  light.shadow.autoUpdate = false;
+  light.shadow.needsUpdate = true;
   light.shadow.mapSize.set(size, size);
   light.shadow.radius = 6;
   light.shadow.bias = -0.0015;
@@ -47,7 +50,7 @@ function castShadows(light, size = 1024) {
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const FOG = new THREE.Color(0x9c8682);
+const FOG = new THREE.Color(0x58677f);
 scene.background = FOG.clone();
 scene.fog = new THREE.FogExp2(FOG, 0.03);
 
@@ -179,6 +182,7 @@ function billboard(obj) {
 // ---------- room ----------
 const ROOM = { left: -4.4, right: 4.6, back: -3, front: 7, ceil: 4.4 };
 const WIN = { x0: -3.3, x1: 3.0, y0: 0.85, y1: 4.0 };
+const paneZ = ROOM.back - 0.06;
 
 const floorTex = canvasTexture(1024, 1024, (g, w, h) => {
   const rows = 8;
@@ -252,9 +256,9 @@ const skyEnv = (() => {
   sky.add(new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
     uniforms: {
-      uTop: { value: new THREE.Color(0x5e5466) },
-      uHorizon: { value: new THREE.Color(0xc4aca6) },
-      uGround: { value: new THREE.Color(0xd9ccc8) },
+      uTop: { value: new THREE.Color(0x334c75) },
+      uHorizon: { value: new THREE.Color(0x96aac6) },
+      uGround: { value: new THREE.Color(0x9daec5) },
       uWarm: { value: new THREE.Color(0xffb070) },
     },
     vertexShader: /* glsl */`
@@ -266,7 +270,7 @@ const skyEnv = (() => {
       void main(){
         float y = vDir.y;
         vec3 c = y > 0.0 ? mix(uHorizon, uTop, pow(y, 0.55)) : mix(uHorizon, uGround, smoothstep(0.0, 0.25, -y));
-        c += uWarm * 0.35 * pow(max(0.0, vDir.z), 4.0) * smoothstep(0.5, 0.0, abs(y - 0.1));
+        c += uWarm * 0.05 * pow(max(0.0, vDir.z), 4.0) * smoothstep(0.5, 0.0, abs(y - 0.1));
         gl_FragColor = vec4(c, 1.0);
       }`,
   })));
@@ -281,7 +285,7 @@ const outdoor = (opts) => new THREE.MeshStandardMaterial({ envMap: skyEnv, envMa
 const groundTex = canvasTexture(2048, 2048, (g, w, h) => {
   const X = (x) => (x + 40) / 80 * w;
   const Z = (z) => (z + 3.3) / -80 * h;
-  g.fillStyle = '#f3ebe7'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#f2f4f6'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < 2500; i++) {
     g.fillStyle = `rgba(${pick(['200,185,190', '255,250,245'])},${rand(0.04, 0.12)})`;
     g.beginPath(); g.arc(rand(0, w), rand(0, h), rand(4, 30), 0, Math.PI * 2); g.fill();
@@ -519,10 +523,10 @@ for (const [x, z, h] of [
       box(0.22, 0.3, 0.22, headM, o, 3.55, 0, g);
       box(0.3, 0.05, 0.3, poleM, o, 3.71, 0, g);
       mesh(new RoundedBoxGeometry(0.32, 0.08, 0.32, 2, 0.03), snowWhite, o, 3.76, 0, g);
-      const halo = glow(0xffa858, 3.4, 1.0);
+      const halo = glow(0xffa858, 1.8, 0.66);
       halo.position.set(o, 3.55, 0);
       g.add(halo);
-      const halo2 = glow(0xff9a50, 8, 0.28);
+      const halo2 = glow(0xff9a50, 4, 0.12);
       halo2.position.set(o, 3.4, 0);
       g.add(halo2);
     }
@@ -573,7 +577,7 @@ for (const [x, z, h] of [
   const xs = [WIN.x0, -0.2, 2.35, WIN.x1], ys = [WIN.y0, 3.0, WIN.y1];
   for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) {
     const pw = xs[i + 1] - xs[i], ph = ys[j + 1] - ys[j];
-    mesh(new THREE.PlaneGeometry(pw, ph), frostMat, (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2, ROOM.back - 0.06);
+    mesh(new THREE.PlaneGeometry(pw, ph), frostMat, (xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2, paneZ);
   }
 }
 
@@ -718,11 +722,28 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
     const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), cloth({ map: plaidTex, ...tiled(LINEN, 2, 2, ['normalMap', 'roughnessMap']) }), px, 0.95, pz, sofa);
     p.rotation.set(0, ry, 0.28);
   }
-  const knit = cloth({ map: knitTex, bumpMap: knitTex, bumpScale: 3, color: 0xf0e4d0, sheenRoughness: 0.6 });
-  const throwTop = mesh(new RoundedBoxGeometry(1.15, 0.1, 1.5, 4, 0.05), knit, 0.12, 0.72, 1.2, sofa);
-  throwTop.rotation.set(0.04, 0.12, -0.05);
-  const drape = mesh(new RoundedBoxGeometry(0.09, 0.45, 1.3, 3, 0.04), knit, 0.68, 0.5, 1.3, sofa);
-  drape.rotation.set(0.05, 0.08, 0.15);
+  const knit = cloth({ map: knitTex, ...tiled(LINEN, 5, 4, ['normalMap', 'roughnessMap']),
+    color: 0xe7dac5, sheenRoughness: 0.6, side: THREE.DoubleSide });
+  // Walk one sheet over the seat, around the rounded cushion edge and down to its hem.
+  const profile = new THREE.CatmullRomCurve3([
+    [-0.30, 0.71], [0.04, 0.71], [0.38, 0.70], [0.54, 0.69],
+    [0.62, 0.65], [0.65, 0.55], [0.66, 0.38], [0.70, 0.20],
+  ].map(([x, y]) => new THREE.Vector3(x, y, 0)));
+  const throwGeo = new THREE.PlaneGeometry(1, 1, 48, 80);
+  const { position, uv } = throwGeo.attributes;
+  for (let i = 0; i < position.count; i++) {
+    const u = uv.getX(i), v = uv.getY(i);
+    const center = profile.getPointAt(u), tangent = profile.getTangentAt(u);
+    const hanging = smooth(0.54, 1, u);
+    const phase = v * 27 + 1.4 * Math.sin(v * 7 + u) + u * 1.6;
+    const fold = (0.5 + 0.5 * Math.cos(phase)) ** 2 * (0.035 + 0.07 * hanging);
+    const x = center.x - tangent.y * fold;
+    const y = center.y + tangent.x * fold + 0.055 * hanging * Math.sin(v * 9);
+    const z = 0.50 + (0.5 - v) * (1.36 + hanging * 0.12) + u * 0.17 + 0.025 * Math.sin(5 * u + 8 * v);
+    position.setXYZ(i, x, y, z);
+  }
+  throwGeo.computeVertexNormals();
+  mesh(throwGeo, knit, 0, 0, 0, sofa);
   contactShadow(-1.95, 2.6, 2.2, 5.4, 0.9);
 }
 
@@ -913,6 +934,43 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }
 
 // ---------- christmas tree ----------
+// Paint one spruce bough with a woody spine, paired side shoots and individual needles.
+function spruceTexture() {
+  return canvasTexture(512, 256, (ctx, w, h) => {
+    ctx.lineCap = 'round';
+    function stroke(x, y, x1, y1, width, color) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+    function shoot(x, y, dx, dy) {
+      stroke(x, y, x + dx, y + dy, 3, '#504839');
+      const length = Math.hypot(dx, dy);
+      for (let n = 0; n < 33; n++) {
+        const t = n / 33;
+        for (const side of [-1, 1]) {
+          const reach = rand(6, 15) * (1 - 0.55 * t) / length;
+          const forward = rand(0.6, 1.5);
+          const nx = x + dx * t, ny = y + dy * t;
+          stroke(nx, ny, nx + reach * (forward * dx - side * dy),
+            ny + reach * (forward * dy + side * dx), rand(1.5, 3.4),
+            pick(['#324b38', '#425c43', '#54704f', '#667d5a']));
+        }
+      }
+    }
+    stroke(4, h / 2, w - 14, h / 2, 5, '#544537');
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 18; i++) {
+        const t = (i + rand(0, 0.7)) / 18;
+        const reach = (0.38 + 0.62 * Math.sin(Math.PI * t)) * (1 - 0.55 * t);
+        shoot(8 + t * (w - 60), h / 2, rand(48, 88) * (1 - t * 0.55),
+          side * reach * rand(92, 132));
+      }
+    }
+    shoot(w * 0.83, h / 2, w * 0.15, 0);
+  });
+}
+
 {
   const tree = new THREE.Group();
   tree.position.set(2.35, 0, -1.85);
@@ -921,44 +979,54 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   const radiusAt = (y) => R * Math.pow(1 - (y - BASE) / (TOP - BASE), 0.92) + 0.03;
 
   mesh(new THREE.CylinderGeometry(0.42, 0.34, 0.38, 24), interior({ color: 0x8a6a44, roughness: 1, map: knitTex }), 0, 0.19, 0, tree);
-  mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.6, 8), interior({ color: 0x3a2a1c }), 0, 0.5, 0, tree);
-  mesh(new THREE.ConeGeometry(R * 0.72, TOP - BASE, 16), interior({ color: 0x0a150d, roughness: 1 }), 0, (BASE + TOP) / 2, 0, tree);
+  mesh(new THREE.CylinderGeometry(0.012, 0.076, TOP - 0.25, 10), interior({ color: 0x4b3827 }),
+    0, (TOP + 0.25) / 2, 0, tree);
 
-  const branchGeo = new THREE.ConeGeometry(0.075, 1, 5);
-  branchGeo.translate(0, 0.5, 0);
-  branchGeo.rotateZ(-Math.PI / 2);
-  branchGeo.scale(1, 0.55, 1.3);
-  const branchMat = interior({ color: 0xffffff, roughness: 0.85 });
-  const MAX = 6000;
-  const branches = new THREE.InstancedMesh(branchGeo, branchMat, MAX);
+  const branchGeo = new THREE.PlaneGeometry(1, 1, 12, 6);
+  const { position, uv } = branchGeo.attributes;
+  for (let i = 0; i < position.count; i++) {
+    const u = uv.getX(i), across = 0.5 - uv.getY(i);
+    const droop = -0.19 * Math.sin(u * Math.PI * 0.85) - 0.03 * u;
+    position.setXYZ(i, u, droop - 0.14 * Math.abs(across), across);
+  }
+  branchGeo.computeVertexNormals();
+
+  const variants = Array.from({ length: 3 }, () => ({
+    material: interior({ map: spruceTexture(), side: THREE.DoubleSide, alphaTest: 0.32, alphaToCoverage: true, roughness: 0.95 }),
+    transforms: [],
+  }));
   const m4 = new THREE.Matrix4();
   const q = new THREE.Quaternion();
-  let n = 0;
   const tips = [];
-  for (let y = BASE; y < TOP - 0.05; y += 0.022) {
+  const tip = new THREE.Vector3(0.98, -0.12, 0);
+  for (let y = BASE + 0.13; y < TOP; y += 0.095) {
     const r = radiusAt(y);
-    const count = Math.max(6, Math.round(r * 42));
-    for (let i = 0; i < count && n < MAX; i++, n++) {
-      const az = rand(0, Math.PI * 2);
-      const len = r * rand(0.8, 1.1);
-      const droop = rand(0.15, 0.45);
-      q.setFromEuler(new THREE.Euler(rand(-0.4, 0.4), az, -droop, 'YXZ'));
-      m4.compose(new THREE.Vector3(0, y, 0), q, new THREE.Vector3(len, rand(0.8, 1.3), 1));
-      branches.setMatrixAt(n, m4);
-      branches.setColorAt(n, new THREE.Color().setHSL(rand(0.34, 0.42), rand(0.3, 0.5), rand(0.06, 0.13)));
-      tips.push({ y: y - Math.sin(droop) * len, az, r: Math.cos(droop) * len });
+    const count = Math.max(5, Math.round(r * 22));
+    const start = rand(0, Math.PI * 2);
+    for (let i = 0; i < count; i++) {
+      const az = start + (i + rand(-0.3, 0.3)) * Math.PI * 2 / count;
+      const length = r * rand(0.76, 1.13);
+      q.setFromEuler(new THREE.Euler(rand(-0.55, 0.55), az, rand(-0.16, 0.26), 'YXZ'));
+      m4.compose(new THREE.Vector3(0, y + rand(-0.035, 0.035), 0), q,
+        new THREE.Vector3(length, length, 0.06 + length * rand(0.39, 0.64)));
+      pick(variants).transforms.push(m4.clone());
+      tips.push(tip.clone().applyMatrix4(m4));
     }
   }
-  branches.count = n;
-  tree.add(branches);
+  for (const { material, transforms } of variants) {
+    const branches = new THREE.InstancedMesh(branchGeo, material, transforms.length);
+    transforms.forEach((transform, i) => branches.setMatrixAt(i, transform));
+    tree.add(branches);
+  }
 
-  const lightsN = 340;
+  const lightsN = 210;
   const lpos = new Float32Array(lightsN * 3), ldata = new Float32Array(lightsN * 2);
   const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.014, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffd9a0, fog: false }), lightsN);
   for (let i = 0; i < lightsN; i++) {
-    const tip = pick(tips);
-    const k = rand(0.82, 1.0);
-    const p = new THREE.Vector3(Math.cos(tip.az) * tip.r * k, tip.y + 0.03, -Math.sin(tip.az) * tip.r * k);
+    const p = pick(tips).clone();
+    const inset = rand(0.73, 1.0);
+    p.x *= inset; p.z *= inset;
+    p.y += rand(0, 0.025);
     lpos.set([p.x, p.y, p.z], i * 3);
     ldata.set([rand(0, 6.28), rand(0.6, 2.2)], i * 2);
     m4.makeTranslation(p.x, p.y, p.z);
@@ -977,9 +1045,26 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
       varying float vI;
       void main(){
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mv;
         vI = 0.65 + 0.35 * sin(uTime * data.y + data.x);
-        gl_PointSize = 0.22 * uScale / -mv.z;
+        #ifdef WINDOW_REFLECTION
+          // Intersect the sightline to the virtual bulb with the window.
+          vec3 bulb = (modelMatrix * vec4(position, 1.0)).xyz;
+          bulb.z = 2.0 * ${paneZ} - bulb.z;
+          float t = (cameraPosition.z - ${paneZ}) / (cameraPosition.z - bulb.z);
+          vec3 hit = mix(cameraPosition, bulb, t);
+          if (t <= 0.0 || t >= 1.0 || hit.x < ${WIN.x0} || hit.x > ${WIN.x1.toFixed(1)} ||
+              hit.y < ${WIN.y0} || hit.y > ${WIN.y1.toFixed(1)}) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            gl_PointSize = 1.0;
+            return;
+          }
+          mv = viewMatrix * vec4(hit, 1.0);
+          vI *= 0.10;
+          gl_PointSize = 0.22 * uScale / -(viewMatrix * vec4(bulb, 1.0)).z;
+        #else
+          gl_PointSize = 0.22 * uScale / -mv.z;
+        #endif
+        gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */`
       varying float vI;
@@ -994,6 +1079,12 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   const lpoints = new THREE.Points(lgeo, lmat);
   lpoints.frustumCulled = false;
   tree.add(lpoints);
+  const reflectionMat = lmat.clone();
+  reflectionMat.defines = { WINDOW_REFLECTION: 1 };
+  reflectionMat.uniforms.uTime = lmat.uniforms.uTime;
+  const reflections = new THREE.Points(lgeo, reflectionMat);
+  reflections.frustumCulled = false;
+  tree.add(reflections);
 
   const ornGeo = new THREE.SphereGeometry(0.055, 18, 12);
   const ornMats = [
@@ -1001,10 +1092,10 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
     interior({ color: 0xc89a48, metalness: 0.85, roughness: 0.25 }),
     interior({ color: 0x1e2a58, metalness: 0.6, roughness: 0.25 }),
   ];
+  const ornamentTips = tips.filter((t) => t.y < TOP - 0.3);
   for (let i = 0; i < 52; i++) {
-    const tip = pick(tips.filter((t) => t.y < TOP - 0.3));
-    const k = rand(0.7, 0.9);
-    const o = mesh(ornGeo, pick(ornMats), Math.cos(tip.az) * tip.r * k, tip.y - 0.04, -Math.sin(tip.az) * tip.r * k, tree);
+    const tip = ornamentTips.splice(Math.floor(rand(0, ornamentTips.length)), 1)[0];
+    const o = mesh(ornGeo, pick(ornMats), tip.x, tip.y - 0.055, tip.z, tree);
     o.scale.setScalar(rand(0.8, 1.35));
   }
 
@@ -1020,7 +1111,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   starGlow.position.set(0, TOP + 0.08, 0.05);
   tree.add(starGlow);
 
-  const tl = castShadows(new THREE.PointLight(0xffb060, 5, 0, 2));
+  const tl = castShadows(new THREE.PointLight(0xffcf94, 5, 0, 2));
   tl.position.set(-0.4, 1.5, 0.9);
   tree.add(tl);
   updates.push((t) => {
@@ -1127,14 +1218,20 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   contactShadow(3.95, -0.6, 1.8, 1.6, 0.6);
 }
 
-scene.add(new THREE.HemisphereLight(0xffd8c0, 0x3a2418, REAL ? 0.12 : 0.28));
+scene.add(new THREE.HemisphereLight(0xceceda, 0x443633, REAL ? 0.12 : 0.28));
 if (!REAL) scene.add(new THREE.AmbientLight(0x6a4028, 0.12));
 
+const windowLight = new THREE.SpotLight(0xc5d9ff, 17, 12, 1.0, 0.85, 2);
+windowLight.position.set(-0.8, 2.9, -2.95);
+windowLight.target.position.set(-1.0, 0.5, 1.6);
+scene.add(windowLight, windowLight.target);
+castShadows(windowLight);
 const AO_LAYER = 1;
 scene.traverse((o) => {
   const m = o.material;
   if (!o.isMesh || !m.isMeshStandardMaterial || m.transparent || m.transmission > 0 || m.fog !== false) return;
-  o.layers.enable(AO_LAYER);
+  // GTAO's normal override does not preserve the cutouts between spruce needles.
+  if (!m.alphaTest) o.layers.enable(AO_LAYER);
   if (!FX.has('shadow') || o.userData.noShadow) return;
   o.castShadow = true;
   o.receiveShadow = true;
@@ -1171,8 +1268,6 @@ const grade = new ShaderPass({
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
       vec3 c = texture2D(tDiffuse, vUv).rgb;
-      c = pow(c, vec3(0.96, 1.0, 1.06));
-      c = mix(c, c * vec3(1.04, 0.99, 0.92), 0.6);
       float v = smoothstep(1.15, 0.3, length((vUv - 0.5) * vec2(1.5, 1.1)));
       c *= mix(0.62, 1.0, v);
       c += (h(vUv * 1371.0 + fract(uTime * 7.13)) - 0.5) * 0.03;

@@ -42,9 +42,12 @@ const page = await browser.newPage({ viewport: { width: Number(args.w), height: 
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(base);
-await page.waitForFunction(() => window.ready === true, null, { timeout: 180000 }).catch(() => {});
-if (errors.length) console.error(errors.join('\n'));
+await page.goto(base, { waitUntil: 'commit' });
+try {
+  await page.waitForFunction(() => window.ready === true, null, { timeout: 180000 });
+} finally {
+  if (errors.length) console.error(errors.join('\n'));
+}
 const canvas = page.locator('canvas');
 await mkdir(join(root, 'out'), { recursive: true });
 
