@@ -105,6 +105,48 @@ function contactShadow(x, z, sx, sz, opacity = 0.8) {
 }
 
 const interior = (opts) => new THREE.MeshStandardMaterial({ fog: false, ...opts });
+const cloth = (opts) => new THREE.MeshPhysicalMaterial({
+  fog: false, roughness: 0.95, sheen: 1, sheenRoughness: 0.45, sheenColor: 0xfff0dc, ...opts,
+});
+const glass = (opts) => new THREE.MeshPhysicalMaterial({
+  fog: false, color: 0xfff6ea, roughness: 0.06, transmission: 1, thickness: 0.004, ior: 1.5, depthWrite: false, ...opts,
+});
+
+function blobNoise(size, count, rMin, rMax, repeat) {
+  return canvasTexture(size, size, (g, w, h) => {
+    g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < count; i++) {
+      const v = pick([50, 210]);
+      const r = rand(rMin, rMax), x = rand(0, w), y = rand(0, h);
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `rgba(${v},${v},${v},${rand(0.08, 0.25)})`);
+      grd.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }, { repeat, color: false });
+}
+
+function weave(repeat, cell = 8) {
+  return canvasTexture(256, 256, (g, w, h) => {
+    for (let y = 0; y < h; y += cell) {
+      for (let x = 0; x < w; x += cell) {
+        const across = ((x + y) / cell) % 2 === 0;
+        const grd = across ? g.createLinearGradient(0, y, 0, y + cell) : g.createLinearGradient(x, 0, x + cell, 0);
+        const hi = Math.round(rand(190, 235));
+        grd.addColorStop(0, '#3a3a3a'); grd.addColorStop(0.5, `rgb(${hi},${hi},${hi})`); grd.addColorStop(1, '#3a3a3a');
+        g.fillStyle = grd; g.fillRect(x, y, cell, cell);
+      }
+    }
+  }, { repeat, color: false });
+}
+
+const grainRough = canvasTexture(512, 512, (g, w, h) => {
+  g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 3000; i++) {
+    g.fillStyle = `rgba(${pick(['30,30,30', '230,230,230'])},${rand(0.03, 0.1)})`;
+    g.fillRect(rand(0, w), rand(0, h), rand(20, 160), rand(1, 3));
+  }
+}, { repeat: [2.5, 2.5], color: false });
 
 function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene) {
   const m = new THREE.Mesh(geo, mat);
@@ -167,11 +209,11 @@ const floorTex = canvasTexture(1024, 1024, (g, w, h) => {
 }, { repeat: [2.5, 2.5] });
 
 const floor = mesh(new THREE.PlaneGeometry(ROOM.right - ROOM.left, ROOM.front - ROOM.back),
-  interior({ map: floorTex, roughness: 0.45, metalness: 0.0, color: 0xc8a888 }),
+  interior({ map: floorTex, roughness: 0.85, roughnessMap: grainRough, bumpMap: floorTex, bumpScale: 0.7, color: 0xc8a888 }),
   (ROOM.left + ROOM.right) / 2, 0, (ROOM.front + ROOM.back) / 2);
 floor.rotation.x = -Math.PI / 2;
 
-const wallMat = interior({ color: 0xbfa68a, roughness: 0.9 });
+const wallMat = interior({ color: 0xbfa68a, roughness: 0.92, bumpMap: blobNoise(512, 1400, 3, 18, [5, 3]), bumpScale: 0.5 });
 const trimMat = interior({ color: 0xe6d6bd, roughness: 0.6 });
 const T = 0.22;
 function box(w, h, d, mat, x, y, z, parent = scene) {
@@ -623,7 +665,7 @@ function candle({ x, y, z, r = 0.045, h = 0.1, jar = false, light = 0, shadow = 
   mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.02, 4), interior({ color: 0x111111 }), 0, h + 0.01, 0, g);
   if (jar) {
     mesh(new THREE.CylinderGeometry(r * 1.45, r * 1.45, h * 1.9, 24, 1, true),
-      interior({ color: 0xfff0d8, transparent: true, opacity: 0.22, roughness: 0.05, depthWrite: false, side: THREE.DoubleSide }),
+      glass(),
       0, h * 0.95, 0, g);
     mesh(new THREE.CylinderGeometry(r * 2.2, r * 2.2, 0.015, 24), interior({ color: 0xb08a4a, metalness: 0.7, roughness: 0.35 }), 0, 0.0, 0, g);
   }
@@ -678,7 +720,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }, { repeat: [5, 4] });
 
 {
-  const fabric = interior({ color: 0xcdb89e, roughness: 1 });
+  const fabric = cloth({ color: 0xcdb89e, bumpMap: weave([18, 18]), bumpScale: 0.5 });
   const sofa = new THREE.Group();
   sofa.position.set(-1.95, 0, 2.6);
   scene.add(sofa);
@@ -689,10 +731,10 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   back.rotation.z = 0.12;
   mesh(new RoundedBoxGeometry(1.25, 0.62, 0.32, 4, 0.14), fabric, 0, 0.55, -2.15, sofa);
   for (const [px, pz, ry] of [[-0.18, -1.4, 0.25], [-0.2, -0.75, -0.15]]) {
-    const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), interior({ map: plaidTex, roughness: 1 }), px, 0.95, pz, sofa);
+    const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), cloth({ map: plaidTex, bumpMap: weave([10, 10], 4), bumpScale: 0.4 }), px, 0.95, pz, sofa);
     p.rotation.set(0, ry, 0.28);
   }
-  const knit = interior({ map: knitTex, bumpMap: knitTex, bumpScale: 3, roughness: 1, color: 0xf0e4d0 });
+  const knit = cloth({ map: knitTex, bumpMap: knitTex, bumpScale: 3, color: 0xf0e4d0, sheenRoughness: 0.6 });
   const throwTop = mesh(new RoundedBoxGeometry(1.15, 0.1, 1.5, 4, 0.05), knit, 0.12, 0.72, 1.2, sofa);
   throwTop.rotation.set(0.04, 0.12, -0.05);
   const drape = mesh(new RoundedBoxGeometry(0.09, 0.45, 1.3, 3, 0.04), knit, 0.68, 0.5, 1.3, sofa);
@@ -701,7 +743,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }
 
 {
-  const wood = interior({ color: 0x6a4428, roughness: 0.4, map: floorTex });
+  const wood = interior({ color: 0x6a4428, roughness: 0.75, roughnessMap: grainRough, map: floorTex, bumpMap: floorTex, bumpScale: 0.4 });
   const table = new THREE.Group();
   table.position.set(0.45, 0, 2.35);
   scene.add(table);
@@ -721,7 +763,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
     }
     for (let i = 0; i < 20000; i++) { g.fillStyle = `rgba(255,240,220,${rand(0, 0.08)})`; g.fillRect(rand(0, w), rand(0, h), 2, 2); }
   });
-  const rug = mesh(new THREE.CircleGeometry(1, 64), interior({ map: rugTex, roughness: 1 }), 0.6, 0.003, 2.2);
+  const rug = mesh(new THREE.CircleGeometry(1, 64), cloth({ map: rugTex, bumpMap: blobNoise(256, 3000, 1, 3, [6, 6]), bumpScale: 0.8, sheenRoughness: 0.7 }), 0.6, 0.003, 2.2);
   rug.rotation.x = -Math.PI / 2;
   rug.scale.set(2.6, 1.9, 1);
 
@@ -735,7 +777,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
       g.restore();
     }
   });
-  const mugMat = interior({ map: mugTex, roughness: 0.35 });
+  const mugMat = new THREE.MeshPhysicalMaterial({ fog: false, map: mugTex, roughness: 0.45, clearcoat: 0.8, clearcoatRoughness: 0.12 });
   const profile = [[0, 0], [0.072, 0], [0.08, 0.008], [0.085, 0.04], [0.085, 0.14], [0.08, 0.145], [0.075, 0.14], [0.075, 0.012], [0, 0.012]]
     .map(([a, b]) => new THREE.Vector2(a, b));
   const steamMat = (s) => new THREE.ShaderMaterial({
@@ -775,7 +817,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   vase.position.set(0.95, 0.505, 1.85);
   scene.add(vase);
   const vp = [[0, 0], [0.07, 0], [0.09, 0.08], [0.06, 0.2], [0.05, 0.26], [0.06, 0.28]].map(([a, b]) => new THREE.Vector2(a, b));
-  mesh(new THREE.LatheGeometry(vp, 32), interior({ color: 0xf4e6cc, transparent: true, opacity: 0.35, roughness: 0.05, side: THREE.DoubleSide, depthWrite: false }), 0, 0, 0, vase);
+  mesh(new THREE.LatheGeometry(vp, 32), glass({ color: 0xf6ecdc }), 0, 0, 0, vase);
   const stems = [], heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.014, 1), interior({ color: 0xe6d6bc, emissive: 0x4a3420, roughness: 1 }), 420);
   const m4 = new THREE.Matrix4();
   let hi = 0;
@@ -1106,7 +1148,8 @@ if (!REAL) scene.add(new THREE.AmbientLight(0x6a4028, 0.12));
 
 const AO_LAYER = 1;
 scene.traverse((o) => {
-  if (!o.isMesh || !o.material.isMeshStandardMaterial || o.material.transparent || o.material.fog !== false) return;
+  const m = o.material;
+  if (!o.isMesh || !m.isMeshStandardMaterial || m.transparent || m.transmission > 0 || m.fog !== false) return;
   o.layers.enable(AO_LAYER);
   if (!FX.has('shadow') || o.userData.noShadow) return;
   o.castShadow = true;
