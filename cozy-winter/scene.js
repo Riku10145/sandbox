@@ -185,7 +185,7 @@ function billboard(obj) {
 // ---------- room ----------
 const ROOM = { left: -4.4, right: 4.6, back: -3, front: 7, ceil: 4.4 };
 const WIN = { x0: -3.3, x1: 3.0, y0: 0.85, y1: 4.0 };
-const paneZ = ROOM.back - 0.06;
+const paneZ = ROOM.back - 0.14;
 
 const floorTex = canvasTexture(1024, 1024, (g, w, h) => {
   const rows = 8;
@@ -220,7 +220,16 @@ floor.rotation.x = -Math.PI / 2;
 
 const wallMat = (w, h) => interior({ ...tiled(WALL, w / 3, h / 3), color: 0xfff2e2, roughness: 1 });
 const wallBox = (w, h, d, x, y, z) => box(w, h, d, wallMat(Math.max(w, d), h), x, y, z);
-const trimMat = interior({ color: 0xe6d6bd, roughness: 0.6 });
+const trimMat = interior({
+  ...tiled(OAK, 2.5, 0.4, ['normalMap', 'roughnessMap']),
+  normalScale: new THREE.Vector2(0.16, 0.16),
+  color: 0xe6d6bd, roughness: 0.72,
+});
+const sashMat = interior({
+  ...tiled(OAK, 2.5, 0.4, ['normalMap', 'roughnessMap']),
+  normalScale: new THREE.Vector2(0.14, 0.14),
+  color: 0xdccbb2, roughness: 0.66,
+});
 const T = 0.22;
 function box(w, h, d, mat, x, y, z, parent = scene) {
   return mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent);
@@ -236,17 +245,45 @@ box(ROOM.right - ROOM.left, T, ROOM.front - ROOM.back, interior({ color: 0x9c7a5
 box(ROOM.right - ROOM.left, 0.12, 0.04, trimMat, (ROOM.left + ROOM.right) / 2, 0.06, ROOM.back + 0.02);
 
 {
-  const z = ROOM.back + 0.02;
-  const f = 0.09;
+  const molding = (w, h, d, mat, x, y, z, r = 0.008) =>
+    mesh(new RoundedBoxGeometry(w, h, d, 2, r), mat, x, y, z);
+  const winW = WIN.x1 - WIN.x0, winH = WIN.y1 - WIN.y0;
+  const cx = (WIN.x0 + WIN.x1) / 2, cy = (WIN.y0 + WIN.y1) / 2;
+  const casingW = 0.11, casingZ = ROOM.back + 0.016;
+  const jambZ = ROOM.back - T / 2;
+  const mullionZ = ROOM.back - 0.085;
+  const sashZ = ROOM.back - 0.115;
   const midX = [-0.2, 2.35];
-  box(WIN.x1 - WIN.x0 + f * 2, f, 0.14, trimMat, (WIN.x0 + WIN.x1) / 2, WIN.y0, z);
-  box(WIN.x1 - WIN.x0 + 0.5, 0.05, 0.3, trimMat, (WIN.x0 + WIN.x1) / 2, WIN.y0 - 0.02, ROOM.back + 0.1);
-  box(WIN.x1 - WIN.x0 + f * 2, f, 0.14, trimMat, (WIN.x0 + WIN.x1) / 2, WIN.y1, z);
-  box(WIN.x1 - WIN.x0, 0.12, 0.16, trimMat, (WIN.x0 + WIN.x1) / 2, 3.0, z);
-  box(f, WIN.y1 - WIN.y0, 0.14, trimMat, WIN.x0, (WIN.y0 + WIN.y1) / 2, z);
-  box(f, WIN.y1 - WIN.y0, 0.14, trimMat, WIN.x1, (WIN.y0 + WIN.y1) / 2, z);
-  for (const x of midX) box(0.12, WIN.y1 - WIN.y0, 0.16, trimMat, x, (WIN.y0 + WIN.y1) / 2, z);
-  for (const x of [-2.2, -1.1, 0.9, 1.65]) box(0.04, WIN.y1 - 3.0, 0.08, trimMat, x, (3.0 + WIN.y1) / 2, z);
+
+  // Outer wall casing (flush corners, stepped header cap)
+  molding(casingW, winH, 0.032, trimMat, WIN.x0 - casingW / 2, cy, casingZ);
+  molding(casingW, winH, 0.032, trimMat, WIN.x1 + casingW / 2, cy, casingZ);
+  molding(winW + casingW * 2, casingW, 0.032, trimMat, cx, WIN.y1 + casingW / 2, casingZ);
+  molding(winW + casingW * 2 + 0.04, 0.028, 0.046, trimMat, cx, WIN.y1 + casingW + 0.012, casingZ + 0.006, 0.006);
+
+  // Chamfered window sill and under-sill apron
+  molding(winW + 0.34, 0.048, 0.26, trimMat, cx, WIN.y0 - 0.018, ROOM.back + 0.055, 0.012);
+  molding(winW + casingW * 2, 0.068, 0.026, trimMat, cx, WIN.y0 - 0.074, ROOM.back + 0.013, 0.006);
+
+  // Recessed jambs lining the wall thickness
+  molding(winW, 0.042, T, sashMat, cx, WIN.y1 - 0.021, jambZ, 0.006);
+  molding(winW, 0.036, T, sashMat, cx, WIN.y0 + 0.018, jambZ, 0.006);
+  molding(0.042, winH, T, sashMat, WIN.x0 + 0.021, cy, jambZ, 0.006);
+  molding(0.042, winH, T, sashMat, WIN.x1 - 0.021, cy, jambZ, 0.006);
+
+  // Recessed main mullions and transom bar
+  molding(winW, 0.095, 0.09, sashMat, cx, 3.0, mullionZ, 0.008);
+  for (const x of midX) molding(0.095, winH, 0.09, sashMat, x, cy, mullionZ, 0.008);
+
+  // Deeper inner sash perimeter and upper muntins
+  molding(winW - 0.06, 0.032, 0.045, sashMat, cx, WIN.y1 - 0.056, sashZ, 0.005);
+  molding(winW - 0.06, 0.032, 0.045, sashMat, cx, WIN.y0 + 0.050, sashZ, 0.005);
+  molding(0.032, winH - 0.06, 0.045, sashMat, WIN.x0 + 0.056, cy, sashZ, 0.005);
+  molding(0.032, winH - 0.06, 0.045, sashMat, WIN.x1 - 0.056, cy, sashZ, 0.005);
+  for (const x of [-2.2, -1.1, 0.9, 1.65]) {
+    molding(0.03, WIN.y1 - 3.0 - 0.04, 0.045, sashMat, x, (3.0 + WIN.y1) / 2, sashZ, 0.005);
+  }
+
   box(ROOM.right - ROOM.left, 0.18, 0.18, interior({ color: 0x7a5a3e, roughness: 0.8 }),
     (ROOM.left + ROOM.right) / 2, ROOM.ceil - 0.09, 1.2);
 }
