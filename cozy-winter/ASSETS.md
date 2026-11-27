@@ -32,3 +32,5 @@ Site terms, <https://tevy.dev/> and <https://tevy.dev/docs>: all assets are CC0 
 | three.js 0.187.0 | npm `three` | MIT | `node_modules/three/LICENSE` |
 
 Everything else (plaid, knit, rug, siding, curtained windows, frost, glow, road tracks) is drawn procedurally in `scene.js`, and the audio is synthesized by `audio.py`.
+| Two-Storey Wooden House (v2, LOD0) | https://tevy.dev/models/village-house | 窓外の住宅（`models/village-house-lod0.glb`） | CC0 1.0 | 2026-11-28 |
+| Falu Red Cottage (v2, LOD0) | https://tevy.dev/models/red-cottage | 窓外の住宅（`models/red-cottage-lod0.glb`） | CC0 1.0 | 2026-11-28 |

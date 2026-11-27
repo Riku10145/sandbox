@@ -450,70 +450,86 @@ const windowTex = canvasTexture(128, 160, (g, w, h) => {
   g.fillRect(w / 2 - 3, 0, 6, h); g.fillRect(0, h * 0.48, w, 6);
 });
 
-function house({ x, z, w, d, h, rot = 0, color = 0xd9ceb4, porchLight = 0 }) {
-  const g = new THREE.Group();
-  g.position.set(x, GROUND_Y, z);
-  g.rotation.y = rot;
-  scene.add(g);
-  const wallM = outdoor({ color, map: sidingTex, bumpMap: sidingTex, bumpScale: 1.2, roughness: 0.8 });
-  box(w, h, d, wallM, 0, h / 2, 0, g);
-  const roofH = w * 0.32;
-  const shape = new THREE.Shape();
-  shape.moveTo(-w / 2 - 0.4, -0.05); shape.lineTo(0, roofH); shape.lineTo(w / 2 + 0.4, -0.05); shape.lineTo(-w / 2 - 0.4, -0.05);
-  const roof = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: d + 0.8, bevelEnabled: true, bevelSize: 0.08, bevelThickness: 0.08, bevelSegments: 2 }), snowWhite);
-  roof.position.set(0, h, -d / 2 - 0.4);
-  g.add(roof);
-  const fascia = outdoor({ color: 0xece4d8, roughness: 0.7 });
-  for (const sx of [-1, 1]) {
-    const len = Math.hypot(w / 2 + 0.4, roofH + 0.05);
-    const trim = box(len, 0.14, 0.08, fascia, sx * (w / 4 + 0.2), h + roofH / 2 - 0.12, d / 2 + 0.42, g);
-    trim.rotation.z = -sx * Math.atan2(roofH + 0.05, w / 2 + 0.4);
-  }
-  const gable = new THREE.Shape();
-  gable.moveTo(-w / 2, 0); gable.lineTo(0, roofH * 0.92); gable.lineTo(w / 2, 0);
-  const gm = new THREE.Mesh(new THREE.ShapeGeometry(gable), outdoor({ color, roughness: 0.8 }));
-  gm.position.set(0, h, d / 2 + 0.01);
-  g.add(gm);
-  box(0.6, 1.4, 0.6, outdoor({ color: 0x7a5646 }), w * 0.25, h + roofH * 0.6, -d * 0.1, g);
-  mesh(new RoundedBoxGeometry(0.78, 0.2, 0.78, 2, 0.08), snowWhite, w * 0.25, h + roofH * 0.6 + 0.75, -d * 0.1, g);
 
-  const lit = new THREE.MeshBasicMaterial({ map: windowTex });
-  const litDim = new THREE.MeshBasicMaterial({ map: windowTex, color: 0x6a5048 });
-  const frameM = outdoor({ color: 0xf0e8dc, roughness: 0.6 });
-  const cols = Math.max(2, Math.floor(w / 1.6));
-  for (let fl = 0; fl < 2; fl++) {
-    for (let c = 0; c < cols; c++) {
-      const wx = -w / 2 + (c + 0.5) * (w / cols);
-      const wy = fl === 0 ? 1.3 : h - 1.0;
-      box(1.0, 1.3, 0.06, frameM, wx, wy, d / 2 + 0.02, g);
-      box(0.82, 1.1, 0.06, rand() < 0.6 ? lit : litDim, wx, wy, d / 2 + 0.04, g);
-      mesh(new RoundedBoxGeometry(1.05, 0.1, 0.22, 2, 0.04), snowWhite, wx, wy - 0.68, d / 2 + 0.1, g);
+{
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('./node_modules/three/examples/jsm/libs/basis/')
+    .detectSupport(renderer);
+  const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const [villageHouseAsset, redCottageAsset] = await Promise.all([
+    gltfLoader.loadAsync('./models/village-house-lod0.glb'),
+    gltfLoader.loadAsync('./models/red-cottage-lod0.glb'),
+  ]);
+  ktx2.dispose();
+
+  function styleWinterHouse(root) {
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const mat = o.material;
+      mat.envMap = skyEnv;
+      mat.envMapIntensity = 0.85;
+      mat.fog = true;
+      // Add snow accumulation on sloped roofs/ledges and warm interior glow on glossy window glass.
+      mat.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying float vSnowUp;\nvarying vec3 vWorldPos;')
+          .replace(
+            '#include <beginnormal_vertex>',
+            '#include <beginnormal_vertex>\nvSnowUp = normalize(mat3(modelMatrix) * objectNormal).y;',
+          )
+          .replace(
+            '#include <worldpos_vertex>',
+            '#include <worldpos_vertex>\nvWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying float vSnowUp;\nvarying vec3 vWorldPos;')
+          .replace(
+            '#include <map_fragment>',
+            '#include <map_fragment>\n' +
+            'float snowDrift = 0.5 + 0.5 * sin(vWorldPos.x * 1.7 + vWorldPos.z * 1.3) * cos(vWorldPos.x * 0.8 - vWorldPos.z * 2.1);\n' +
+            'float snowMask = smoothstep(0.38, 0.72, vSnowUp + (snowDrift - 0.5) * 0.14);\n' +
+            'diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86, 0.89, 0.94), snowMask * 0.88);',
+          )
+          .replace(
+            '#include <roughnessmap_fragment>',
+            '#include <roughnessmap_fragment>\n' +
+            'float glassMask = smoothstep(0.28, 0.10, roughnessFactor) * (1.0 - smoothstep(0.25, 0.5, abs(vSnowUp)));\n' +
+            'roughnessFactor = mix(roughnessFactor, 0.95, snowMask * 0.85);',
+          )
+          .replace(
+            '#include <emissivemap_fragment>',
+            '#include <emissivemap_fragment>\n' +
+            'totalEmissiveRadiance += vec3(1.22, 0.58, 0.18) * glassMask * 1.15;',
+          );
+      };
+    });
+  }
+  styleWinterHouse(villageHouseAsset.scene);
+  styleWinterHouse(redCottageAsset.scene);
+
+  // Place Nordic timber houses along the snowy street (facing +Z toward the window).
+  const placements = [
+    { asset: villageHouseAsset, x: 2.5, z: -22.5, scale: 0.72, rotY: -0.22, porchLight: 12, porchY: 2.9, porchZ: 5.4 },
+    { asset: redCottageAsset, x: -7.2, z: -25.2, scale: 0.84, rotY: 0.30, porchLight: 8, porchY: 2.2, porchZ: 4.2 },
+    { asset: redCottageAsset, x: 11.8, z: -25.5, scale: 0.78, rotY: -0.35, porchLight: 0 },
+    { asset: villageHouseAsset, x: -2.4, z: -37.0, scale: 0.66, rotY: 0.14, porchLight: 0 },
+  ];
+  for (const h of placements) {
+    const inst = h.asset.scene.clone(true);
+    inst.position.set(h.x, GROUND_Y - 0.08, h.z);
+    inst.scale.setScalar(h.scale);
+    inst.rotation.y = h.rotY;
+    scene.add(inst);
+    if (h.porchLight) {
+      const halo = glow(0xffb470, 2.0, 0.65, true);
+      halo.position.set(0, h.porchY, h.porchZ);
+      inst.add(halo);
+      const pl = new THREE.PointLight(0xffa860, h.porchLight, 16, 2);
+      pl.position.set(0, h.porchY, h.porchZ + 0.3);
+      inst.add(pl);
     }
   }
-  box(1.4, 1.6, 0.06, lit, 0, h + roofH * 0.35, d / 2 + 0.03, g);
-  const porch = new THREE.Group();
-  g.add(porch);
-  porch.position.set(0, 0, d / 2 + 1.1);
-  mesh(new RoundedBoxGeometry(w * 0.72, 0.26, 2.5, 2, 0.1), snowWhite, 0, 2.55, 0, porch);
-  for (const px of [-w * 0.33, -w * 0.11, w * 0.11, w * 0.33]) box(0.14, 2.5, 0.14, frameM, px, 1.25, 1.1, porch);
-  box(w * 0.7, 0.08, 0.08, frameM, 0, 0.9, 1.1, porch);
-  for (let i = 0; i < 22; i++) box(0.04, 0.5, 0.04, frameM, -w * 0.33 + i * (w * 0.66 / 21), 0.65, 1.1, porch);
-  mesh(new RoundedBoxGeometry(w * 0.7, 0.1, 0.16, 2, 0.04), snowWhite, 0, 0.96, 1.1, porch);
-  const halo = glow(0xffb070, 2.2, 0.8, true);
-  halo.position.set(0, 2.0, 0.9);
-  porch.add(halo);
-  if (porchLight) {
-    const pl = new THREE.PointLight(0xffa860, porchLight, 16, 2);
-    pl.position.set(0, 2.1, 0.8);
-    porch.add(pl);
-  }
-  return g;
 }
-
-house({ x: 2.2, z: -21, w: 8, d: 6, h: 4.6, porchLight: 10 });
-house({ x: -7.5, z: -27, w: 7, d: 6, h: 4.2, rot: 0.35, color: 0xcdbca0 });
-house({ x: 11, z: -25, w: 7, d: 6, h: 4.4, rot: -0.3, color: 0xd6c8b8 });
-house({ x: -2.5, z: -36, w: 6, d: 5, h: 4.0, color: 0xc8b8a6 });
 
 for (const [x, z, h, r] of [
   [-6.5, -10, 3.2, 1.3], [-5.4, -13.5, 2.4, 1.0], [5.8, -18, 3.6, 1.5], [7.2, -17, 2.6, 1.1],
