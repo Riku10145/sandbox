@@ -288,6 +288,43 @@ box(ROOM.right - ROOM.left, 0.12, 0.04, trimMat, (ROOM.left + ROOM.right) / 2, 0
     (ROOM.left + ROOM.right) / 2, ROOM.ceil - 0.09, 1.2);
 }
 
+// ---------- CC0 3D models (tevy.dev) ----------
+const gltfAssets = {};
+{
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('./node_modules/three/examples/jsm/libs/basis/')
+    .detectSupport(renderer);
+  const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const entries = [
+    ['villageHouse', './models/village-house-lod0.glb'],
+    ['redCottage', './models/red-cottage-lod0.glb'],
+    ['bareTree', './models/spooky-tree-lod1.glb'],
+    ['snowySpruce', './models/snowy-spruce-lod2.glb'],
+    ['woodStove', './models/wood-stove-lod1.glb'],
+    ['giftSet', './models/gift-box-set-lod1.glb'],
+    ['driedFlowers', './models/dried-flowers-lod0.glb'],
+    ['tableLamp', './models/table-lamp-lod0.glb'],
+    ['books', './models/books-lod1.glb'],
+  ];
+  const loaded = await Promise.all(entries.map(([, path]) => gltfLoader.loadAsync(path)));
+  entries.forEach(([key], i) => { gltfAssets[key] = loaded[i]; });
+  ktx2.dispose();
+}
+
+function prepInteriorModel(root, { cast = true, receive = true, envIntensity = 1.0 } = {}) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = cast;
+    o.receiveShadow = receive;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      m.fog = false;
+      m.envMapIntensity = envIntensity;
+    }
+  });
+  return root;
+}
+
 // ---------- outside ----------
 const GROUND_Y = 0.55;
 
@@ -404,30 +441,20 @@ function bareTree(x, z, height, spread, depth = 6) {
   return m;
 }
 
-function pineTree(x, z, height, radius) {
-  const tiers = 9, parts = [];
-  for (let i = 0; i < tiers; i++) {
-    const k = i / tiers;
-    const r = radius * (1 - k * 0.88);
-    const h = height * 0.24;
-    const g = new THREE.ConeGeometry(r, h, 14, 3);
-    const p = g.attributes.position;
-    for (let v = 0; v < p.count; v++) {
-      if (p.getY(v) < h / 2 - 0.01) {
-        const j = rand(0.75, 1.2);
-        p.setX(v, p.getX(v) * j);
-        p.setZ(v, p.getZ(v) * j);
-        p.setY(v, p.getY(v) + rand(-0.1, 0.05) * h);
-      }
-    }
-    g.computeVertexNormals();
-    g.translate(0, height * 0.1 + k * height * 0.76 + h / 2, 0);
-    parts.push(g);
-  }
-  const geo = colorByUp(mergeGeometries(parts), new THREE.Color(0x14211b), snowCol, 0.25, 0.65, 0.45);
-  const m = new THREE.Mesh(geo, treeMat);
-  m.position.set(x, GROUND_Y, z);
-  scene.add(m);
+gltfAssets.snowySpruce.scene.traverse((o) => {
+  if (!o.isMesh) return;
+  const m = o.material;
+  m.envMap = skyEnv;
+  m.envMapIntensity = 0.9;
+  m.fog = true;
+});
+function pineTree(x, z, height) {
+  const inst = gltfAssets.snowySpruce.scene.clone(true);
+  const s = (height / 10.48) * rand(0.95, 1.15);
+  inst.position.set(x, GROUND_Y - 0.15, z);
+  inst.scale.set(s * 1.15, s, s * 1.15);
+  inst.rotation.y = rand(0, Math.PI * 2);
+  scene.add(inst);
 }
 
 const sidingTex = canvasTexture(256, 256, (g, w, h) => {
@@ -452,15 +479,8 @@ const windowTex = canvasTexture(128, 160, (g, w, h) => {
 
 
 {
-  const ktx2 = new KTX2Loader()
-    .setTranscoderPath('./node_modules/three/examples/jsm/libs/basis/')
-    .detectSupport(renderer);
-  const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
-  const [villageHouseAsset, redCottageAsset] = await Promise.all([
-    gltfLoader.loadAsync('./models/village-house-lod0.glb'),
-    gltfLoader.loadAsync('./models/red-cottage-lod0.glb'),
-  ]);
-  ktx2.dispose();
+  const villageHouseAsset = gltfAssets.villageHouse;
+  const redCottageAsset = gltfAssets.redCottage;
 
   function styleWinterHouse(root) {
     root.traverse((o) => {
@@ -538,12 +558,7 @@ for (const [x, z, h, r] of [
 ]) pineTree(x, z, h, r);
 
 {
-  const ktx2 = new KTX2Loader()
-    .setTranscoderPath('./node_modules/three/examples/jsm/libs/basis/')
-    .detectSupport(renderer);
-  const gltfLoader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
-  const bareTreeAsset = await gltfLoader.loadAsync('./models/spooky-tree-lod1.glb');
-  ktx2.dispose();
+  const bareTreeAsset = gltfAssets.bareTree;
   bareTreeAsset.scene.traverse((o) => {
     if (!o.isMesh) return;
     const mat = o.material;
@@ -599,44 +614,47 @@ for (const [x, z, h] of [
 }
 
 {
-  const poleM = outdoor({ color: 0x1e1a18, roughness: 0.45, metalness: 0.6 });
-  const headM = new THREE.MeshBasicMaterial({ color: 0xffc070, fog: false });
+  const poleM = outdoor({ color: 0x1c1918, roughness: 0.42, metalness: 0.68 });
+  const glassPaneM = new THREE.MeshBasicMaterial({ color: 0xffd18c, fog: false });
+  const plinthPts = [[0,0],[0.15,0],[0.14,0.12],[0.11,0.18],[0.11,0.55],[0.085,0.62],[0.068,0.68]].map(([a,b])=>new THREE.Vector2(a,b));
+  const plinthGeo = new THREE.LatheGeometry(plinthPts, 12);
   for (const [x, z, heads, power] of [[-3.9, -12.5, 2, 14], [0.9, -14.5, 1, 10], [-12, -18, 1, 0], [8.5, -19.5, 1, 0], [-1.2, -30, 1, 0]]) {
     const g = new THREE.Group();
     g.position.set(x, GROUND_Y, z);
     scene.add(g);
-    mesh(new THREE.CylinderGeometry(0.045, 0.07, 3.4, 10), poleM, 0, 1.7, 0, g);
-    const offs = heads === 2 ? [-0.32, 0.32] : [0];
-    if (heads === 2) box(0.7, 0.05, 0.05, poleM, 0, 3.3, 0, g);
+    mesh(plinthGeo, poleM, 0, 0, 0, g);
+    mesh(new THREE.CylinderGeometry(0.042, 0.066, 2.72, 12), poleM, 0, 2.04, 0, g);
+    mesh(new THREE.TorusGeometry(0.068, 0.016, 8, 16), poleM, 0, 1.35, 0, g).rotation.x = Math.PI / 2;
+    mesh(new THREE.TorusGeometry(0.056, 0.015, 8, 16), poleM, 0, 3.25, 0, g).rotation.x = Math.PI / 2;
+    const offs = heads === 2 ? [-0.34, 0.34] : [0];
+    if (heads === 2) {
+      mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.72, 8), poleM, 0, 3.30, 0, g).rotation.z = Math.PI / 2;
+      mesh(new THREE.SphereGeometry(0.05, 10, 8), poleM, 0, 3.35, 0, g);
+    }
     for (const o of offs) {
-      box(0.22, 0.3, 0.22, headM, o, 3.55, 0, g);
-      box(0.3, 0.05, 0.3, poleM, o, 3.71, 0, g);
-      mesh(new RoundedBoxGeometry(0.32, 0.08, 0.32, 2, 0.03), snowWhite, o, 3.76, 0, g);
-      const halo = glow(0xffa858, 1.8, 0.66);
+      // Hexagonal lantern cage with tapered warm glass, iron ribs, pyramidal cap, finial, and snow cap
+      mesh(new THREE.CylinderGeometry(0.08, 0.045, 0.07, 6), poleM, o, 3.36, 0, g);
+      mesh(new THREE.CylinderGeometry(0.13, 0.09, 0.30, 6), glassPaneM, o, 3.54, 0, g);
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        const rib = mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.32, 5), poleM, o + Math.cos(a) * 0.115, 3.54, Math.sin(a) * 0.115, g);
+        rib.rotation.z = -Math.cos(a) * 0.13;
+        rib.rotation.x = Math.sin(a) * 0.13;
+      }
+      mesh(new THREE.ConeGeometry(0.19, 0.13, 6), poleM, o, 3.74, 0, g);
+      mesh(new THREE.ConeGeometry(0.18, 0.07, 6), snowWhite, o, 3.78, 0, g);
+      mesh(new THREE.SphereGeometry(0.026, 8, 6), poleM, o, 3.83, 0, g);
+      const halo = glow(0xffa858, 1.7, 0.62);
       halo.position.set(o, 3.55, 0);
       g.add(halo);
-      const halo2 = glow(0xff9a50, 4, 0.12);
+      const halo2 = glow(0xff9a50, 3.8, 0.11);
       halo2.position.set(o, 3.4, 0);
       g.add(halo2);
     }
     if (power) {
-      const pl = new THREE.PointLight(0xffa050, power, 18, 2);
-      pl.position.set(0, 3.4, 0.3);
+      const pl = new THREE.PointLight(0xffa452, power, 16, 2);
+      pl.position.set(0, 3.4, 0);
       g.add(pl);
-    }
-  }
-  const strings = [
-    [[-11, 2.6, -16], [-6, 2.9, -17.5], 18], [[-6, 2.9, -17.5], [-1.5, 2.7, -18.5], 16],
-    [[-16, 3.0, -22], [-10, 3.2, -24], 16], [[6, 2.6, -16.5], [12, 2.9, -18], 16],
-  ];
-  for (const [a, b, n] of strings) {
-    for (let i = 0; i <= n; i++) {
-      const k = i / n;
-      const p = new THREE.Vector3(...a).lerp(new THREE.Vector3(...b), k);
-      p.y -= Math.sin(k * Math.PI) * 0.45;
-      const s = glow(0xffc27a, 0.32, 0.9);
-      s.position.copy(p);
-      scene.add(s);
     }
   }
 }
@@ -738,12 +756,12 @@ function candle({ x, y, z, r = 0.045, h = 0.1, jar = false, light = 0, shadow = 
   const g = new THREE.Group();
   g.position.set(x, y, z);
   scene.add(g);
-  mesh(new THREE.CylinderGeometry(r, r, h, 20), interior({ color: 0xf2e3c8, emissive: 0x6a3a12, emissiveIntensity: 0.6, roughness: 0.6 }), 0, h / 2, 0, g);
+  mesh(new THREE.CylinderGeometry(r, r, h, 20), interior({ color: 0xf5e5c8, emissive: 0xff8a2c, emissiveIntensity: 1.35, roughness: 0.55 }), 0, h / 2, 0, g);
   mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.02, 4), interior({ color: 0x111111 }), 0, h + 0.01, 0, g);
   if (jar) {
-    mesh(new THREE.CylinderGeometry(r * 1.45, r * 1.45, h * 1.9, 24, 1, true),
-      glass(),
-      0, h * 0.95, 0, g);
+    mesh(new THREE.CylinderGeometry(r * 1.42, r * 1.36, h * 1.85, 24, 1, true),
+      glass({ color: 0xffe4bc, roughness: 0.18, transmission: 0.78 }),
+      0, h * 0.93, 0, g);
     mesh(new THREE.CylinderGeometry(r * 2.2, r * 2.2, 0.015, 24), interior({ color: 0xb08a4a, metalness: 0.7, roughness: 0.35 }), 0, 0.0, 0, g);
   }
   const fm = flameMat(s);
@@ -950,10 +968,11 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
       uniform float uTime, uSeed;
       varying vec2 vUv;
       void main(){
-        float n = fbm(vec2(vUv.x * 2.5 + uSeed, vUv.y * 2.2 - uTime * 0.45));
-        float x = vUv.x - 0.5 + (n - 0.5) * 0.9 * vUv.y;
-        float wisp = smoothstep(0.16, 0.0, abs(x)) * smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.35, vUv.y);
-        gl_FragColor = vec4(vec3(1.0, 0.93, 0.85), wisp * n * 0.35);
+        float n = fbm(vec2(vUv.x * 2.6 + uSeed, vUv.y * 2.0 - uTime * 0.38));
+        float n2 = fbm(vec2(vUv.x * 5.2 - uSeed, vUv.y * 3.8 - uTime * 0.55));
+        float x = vUv.x - 0.5 + (n - 0.5) * 0.65 * vUv.y;
+        float wisp = smoothstep(0.28, 0.0, abs(x)) * smoothstep(0.0, 0.22, vUv.y) * smoothstep(1.0, 0.25, vUv.y);
+        gl_FragColor = vec4(vec3(1.0, 0.94, 0.88), wisp * (0.45 + 0.55 * n2) * n * 0.16);
       }`,
   });
   for (const [mx, mz, ry, s] of [[-0.12, 0.25, 0.4, 1.0], [0.72, 0.18, 2.4, 7.0]]) {
@@ -975,39 +994,33 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   }
   candle({ x: 0.55, y: 0.505, z: 2.15, r: 0.055, h: 0.11, jar: true, light: 0.7, shadow: true });
 
-  const vase = new THREE.Group();
-  vase.position.set(0.95, 0.505, 1.85);
+  const vase = prepInteriorModel(gltfAssets.driedFlowers.scene.clone(true));
+  vase.position.set(0.96, 0.505, 1.84);
+  vase.scale.setScalar(0.92);
+  vase.rotation.y = 0.6;
   scene.add(vase);
-  const vp = [[0, 0], [0.07, 0], [0.09, 0.08], [0.06, 0.2], [0.05, 0.26], [0.06, 0.28]].map(([a, b]) => new THREE.Vector2(a, b));
-  mesh(new THREE.LatheGeometry(vp, 32), glass({ color: 0xf6ecdc }), 0, 0, 0, vase);
-  const stems = [], heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.014, 1), interior({ color: 0xe6d6bc, emissive: 0x4a3420, roughness: 1 }), 420);
-  const m4 = new THREE.Matrix4();
-  let hi = 0;
-  for (let i = 0; i < 28; i++) {
-    const az = rand(0, Math.PI * 2), tilt = rand(0.1, 0.6), len = rand(0.26, 0.42);
-    const dir = new THREE.Vector3(Math.sin(tilt) * Math.cos(az), Math.cos(tilt), Math.sin(tilt) * Math.sin(az));
-    const g = new THREE.CylinderGeometry(0.002, 0.003, len, 3);
-    g.translate(0, len / 2, 0);
-    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
-    g.translate(0, 0.1, 0);
-    stems.push(g);
-    const tip = dir.clone().multiplyScalar(len).add(new THREE.Vector3(0, 0.1, 0));
-    for (let k = 0; k < 15 && hi < 420; k++, hi++) {
-      const p = tip.clone().add(new THREE.Vector3(rand(-0.05, 0.05), rand(-0.035, 0.035), rand(-0.05, 0.05)));
-      const s = rand(0.6, 1.3);
-      m4.compose(p, new THREE.Quaternion(), new THREE.Vector3(s, s, s));
-      heads.setMatrixAt(hi, m4);
-    }
-  }
-  heads.count = hi;
-  vase.add(heads);
-  mesh(mergeGeometries(stems), interior({ color: 0x8a7458, roughness: 1 }), 0, 0, 0, vase);
 
   const mini = new THREE.Group();
-  mini.position.set(1.25, 0.505, 2.35);
+  mini.position.set(1.26, 0.505, 2.34);
   scene.add(mini);
-  mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.1, 20), interior({ color: 0x6a3a22, roughness: 0.8 }), 0, 0.05, 0, mini);
-  for (let i = 0; i < 4; i++) mesh(new THREE.ConeGeometry(0.13 - i * 0.025, 0.14, 12), interior({ color: 0x1f3a26, roughness: 0.9 }), 0, 0.15 + i * 0.07, 0, mini);
+  const potProfile = [[0,0],[0.048,0],[0.062,0.09],[0.068,0.095],[0.068,0.11],[0.056,0.11],[0.052,0.095]].map(([a,b])=>new THREE.Vector2(a,b));
+  mesh(new THREE.LatheGeometry(potProfile, 24), interior({ color: 0x7b4730, roughness: 0.78 }), 0, 0, 0, mini);
+  mesh(new THREE.CylinderGeometry(0.052, 0.05, 0.012, 16), interior({ color: 0x261a12, roughness: 1 }), 0, 0.094, 0, mini);
+  mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.28, 8), interior({ color: 0x3b2618, roughness: 0.95 }), 0, 0.22, 0, mini);
+  const miniLeafM = interior({ color: 0x26442c, roughness: 0.88, side: THREE.DoubleSide });
+  for (let t = 0; t < 6; t++) {
+    const k = t / 5;
+    const count = Math.round(10 - k * 5);
+    const y = 0.12 + k * 0.23;
+    const len = 0.13 * (1 - k * 0.65);
+    for (let j = 0; j < count; j++) {
+      const a = (j / count) * Math.PI * 2 + t * 0.7 + rand(-0.15, 0.15);
+      const sprig = mesh(new THREE.ConeGeometry(0.022 * (1 - k * 0.4), len, 5), miniLeafM, Math.cos(a) * len * 0.42, y, Math.sin(a) * len * 0.42, mini);
+      sprig.rotation.order = 'YXZ';
+      sprig.rotation.y = -a + Math.PI / 2;
+      sprig.rotation.x = Math.PI / 2 - 0.35 + k * 0.35;
+    }
+  }
 }
 
 {
@@ -1019,9 +1032,13 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   box(1.3, 0.04, 0.42, wood, 0, 0.04, 0, side);
   box(0.05, 0.56, 0.42, wood, -0.63, 0.3, 0, side);
   box(0.05, 0.56, 0.42, wood, 0.63, 0.3, 0, side);
-  const bookCols = [0x6a4a3a, 0x8a7a62, 0x4a3a32, 0xa89070, 0x5a4a40];
-  for (let i = 0; i < 4; i++) box(0.5, 0.06, 0.3, interior({ color: bookCols[i], roughness: 0.9 }), -0.25 + rand(-0.04, 0.04), 0.09 + i * 0.065, 0, side);
-  for (let i = 0; i < 3; i++) box(0.45, 0.07, 0.3, interior({ color: bookCols[i + 2], roughness: 0.9 }), 0.3, 0.095 + i * 0.075, 0, side);
+  for (const [bx, ry, scB] of [[-0.28, 0.08, 1.35], [0.22, -0.18, 1.25]]) {
+    const bk = prepInteriorModel(gltfAssets.books.scene.clone(true));
+    bk.position.set(bx, 0.06, 0.02);
+    bk.scale.setScalar(scB);
+    bk.rotation.y = ry;
+    side.add(bk);
+  }
   const mug = mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.1, 20), interior({ color: 0x5a524c, roughness: 0.5 }), -0.35, 0.655, 0.02, side);
   mug.castShadow = false;
   const cone = mesh(new THREE.SphereGeometry(0.05, 10, 8), interior({ color: 0x4a2e1c, roughness: 1 }), 0.12, 0.64, 0.05, side);
@@ -1044,11 +1061,31 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   scene.add(lamp);
   const wood = interior({ ...tiled(WALNUT, 0.4, 0.4), roughness: 0.9, color: 0xb09080 });
   box(0.6, 0.72, 0.55, wood, 0, 0.36, 0, lamp);
-  const base = [[0, 0], [0.12, 0], [0.13, 0.05], [0.09, 0.12], [0.11, 0.3], [0.05, 0.42], [0.02, 0.5], [0, 0.5]].map(([a, b]) => new THREE.Vector2(a, b));
-  mesh(new THREE.LatheGeometry(base, 32), interior({ color: 0x3a2214, roughness: 0.3, metalness: 0.2 }), 0, 0.72, 0, lamp);
-  const shade = mesh(new THREE.CylinderGeometry(0.2, 0.34, 0.38, 40, 1, true),
-    interior({ color: 0xf0c890, emissive: 0xffa040, emissiveIntensity: 1.4, roughness: 1, side: THREE.DoubleSide }), 0, 1.45, 0, lamp);
-  shade.userData.noShadow = true;
+  const lampModel = prepInteriorModel(gltfAssets.tableLamp.scene.clone(true), { cast: false });
+  lampModel.position.set(0, 0.72, 0);
+  lampModel.scale.setScalar(1.62);
+  lampModel.rotation.y = 0.55;
+  lampModel.traverse((o) => {
+    if (!o.isMesh) return;
+    o.userData.noShadow = true;
+    const m = o.material;
+    // Give the pleated linen shade a warm interior-bulb glow without washing out the wooden base.
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying float vLampY;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLampY = position.y;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vLampY;')
+        .replace(
+          '#include <emissivemap_fragment>',
+          '#include <emissivemap_fragment>\n' +
+          'float shadeBand = smoothstep(0.24, 0.30, vLampY) * (1.0 - smoothstep(0.47, 0.52, vLampY));\n' +
+          'float bulbHot = 0.55 + 0.65 * exp(-pow((vLampY - 0.37) / 0.09, 2.0));\n' +
+          'totalEmissiveRadiance += vec3(1.15, 0.68, 0.26) * shadeBand * bulbHot;',
+        );
+    };
+  });
+  lamp.add(lampModel);
   const bulbGlow = glow(0xffb060, 1.8, 0.35);
   bulbGlow.position.set(0, 1.4, 0);
   lamp.add(bulbGlow);
@@ -1256,14 +1293,24 @@ function spruceTexture() {
     o.scale.setScalar(rand(0.8, 1.35));
   }
 
-  const star = new THREE.Shape();
+  const starPos = [];
+  const R_OUT = 0.145, R_IN = 0.056, Z_APEX = 0.048;
   for (let i = 0; i < 10; i++) {
-    const a = i / 10 * Math.PI * 2 + Math.PI / 2, r = i % 2 ? 0.06 : 0.15;
-    i ? star.lineTo(Math.cos(a) * r, Math.sin(a) * r) : star.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    const a0 = (i / 10) * Math.PI * 2 + Math.PI / 2;
+    const a1 = ((i + 1) / 10) * Math.PI * 2 + Math.PI / 2;
+    const r0 = i % 2 === 0 ? R_OUT : R_IN;
+    const r1 = (i + 1) % 2 === 0 ? R_OUT : R_IN;
+    const x0 = Math.cos(a0) * r0, y0 = Math.sin(a0) * r0;
+    const x1 = Math.cos(a1) * r1, y1 = Math.sin(a1) * r1;
+    starPos.push(0, 0, Z_APEX, x0, y0, 0, x1, y1, 0);
+    starPos.push(0, 0, -Z_APEX, x1, y1, 0, x0, y0, 0);
   }
-  const starMesh = mesh(new THREE.ExtrudeGeometry(star, { depth: 0.03, bevelEnabled: true, bevelSize: 0.01, bevelThickness: 0.01, bevelSegments: 1 }),
-    interior({ color: 0xd8b060, emissive: 0xffb040, emissiveIntensity: 1.6, metalness: 0.8, roughness: 0.3 }), 0, TOP + 0.08, 0, tree);
-  starMesh.rotation.y = 0.3;
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+  starGeo.computeVertexNormals();
+  const starMesh = mesh(starGeo,
+    interior({ color: 0xe6be68, emissive: 0xffa838, emissiveIntensity: 1.05, metalness: 0.86, roughness: 0.22 }), 0, TOP + 0.09, 0, tree);
+  starMesh.rotation.y = 0.25;
   const starGlow = glow(0xffc070, 0.9, 0.5);
   starGlow.position.set(0, TOP + 0.08, 0.05);
   tree.add(starGlow);
@@ -1276,20 +1323,12 @@ function spruceTexture() {
     tl.intensity = 5 + Math.sin(t * 1.3) * 0.4;
   });
 
-  const giftMats = [
-    interior({ color: 0xb08a4a, metalness: 0.5, roughness: 0.35 }),
-    interior({ color: 0x8a6a38, metalness: 0.4, roughness: 0.4 }),
-    interior({ color: 0x6a1a18, roughness: 0.6 }),
-  ];
-  const ribbon = interior({ color: 0xe8d098, metalness: 0.6, roughness: 0.3 });
-  for (const [gx, gz, w, h, d, ry] of [[-0.8, 0.55, 0.45, 0.35, 0.4, 0.3], [-0.25, 0.75, 0.35, 0.28, 0.35, -0.2], [0.55, 0.6, 0.55, 0.42, 0.45, 0.1], [0.3, 0.98, 0.3, 0.22, 0.3, 0.5], [-1.15, 0.0, 0.4, 0.3, 0.4, 0.6]]) {
-    const gg = new THREE.Group();
-    gg.position.set(gx, 0, gz);
-    gg.rotation.y = ry;
-    tree.add(gg);
-    box(w, h, d, pick(giftMats), 0, h / 2, 0, gg);
-    box(w + 0.01, h + 0.01, 0.04, ribbon, 0, h / 2, 0, gg);
-    box(0.04, h + 0.01, d + 0.01, ribbon, 0, h / 2, 0, gg);
+  for (const [gx, gz, scG, ry] of [[-0.25, 0.72, 1.08, 0.25], [0.58, 0.56, 0.92, -1.35]]) {
+    const gifts = prepInteriorModel(gltfAssets.giftSet.scene.clone(true));
+    gifts.position.set(gx, 0, gz);
+    gifts.scale.setScalar(scG);
+    gifts.rotation.y = ry;
+    tree.add(gifts);
   }
   for (let i = 0; i < 5; i++) {
     const b = mesh(new THREE.SphereGeometry(0.08, 18, 12), pick(ornMats), rand(-0.9, 0.9), 0.08, rand(0.7, 1.2), tree);
@@ -1301,17 +1340,28 @@ function spruceTexture() {
 // ---------- wood stove ----------
 {
   const stove = new THREE.Group();
-  stove.position.set(3.95, 0, -0.75);
-  stove.rotation.y = -0.95;
+  stove.position.set(3.92, 0, -0.78);
+  stove.rotation.y = -0.88;
   scene.add(stove);
-  const iron = interior({ color: 0x141212, roughness: 0.55, metalness: 0.5 });
-  box(1.5, 0.06, 1.3, interior({ color: 0x5a4a40, roughness: 0.9 }), 0, 0.03, 0.2, stove);
-  box(0.9, 0.75, 0.6, iron, 0, 0.55, 0, stove);
-  box(0.98, 0.06, 0.68, iron, 0, 0.95, 0, stove);
-  for (const lx of [-0.38, 0.38]) for (const lz of [-0.22, 0.22]) box(0.06, 0.18, 0.06, iron, lx, 0.09, lz, stove);
-  mesh(new THREE.CylinderGeometry(0.11, 0.11, 3.5, 20), iron, 0, 0.98 + 1.75, -0.05, stove);
 
-  const fireBack = mesh(new THREE.PlaneGeometry(0.66, 0.5), new THREE.ShaderMaterial({
+  // Beveled dark slate hearth pad
+  const hearth = mesh(
+    new RoundedBoxGeometry(1.55, 0.06, 1.35, 2, 0.015),
+    interior({ ...tiled(WALL, 1.2, 1.2, ['normalMap', 'roughnessMap']), color: 0x3b3532, roughness: 0.88 }),
+    0, 0.03, 0.16, stove,
+  );
+  hearth.receiveShadow = true;
+
+  // Cast-iron wood stove (CC0 3D model, 0.56 x 2.02 x 0.52 m -> scaled 1.55x)
+  const stoveModel = prepInteriorModel(gltfAssets.woodStove.scene.clone(true));
+  stoveModel.position.set(0, 0.055, 0);
+  stoveModel.scale.setScalar(1.58);
+  stove.add(stoveModel);
+  // Extend the cast-iron flue pipe seamlessly into the ceiling
+  mesh(new THREE.CylinderGeometry(0.115, 0.115, 1.1, 20), interior({ color: 0x151414, roughness: 0.52, metalness: 0.65 }), 0, 3.45, -0.04, stove);
+
+  // Animated volumetric fire & glowing ember bed visible through the stove's glass window
+  const fireBack = mesh(new THREE.PlaneGeometry(0.42, 0.34), new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 } },
     vertexShader: UV_VERT,
     fragmentShader: GLSL_NOISE + /* glsl */`
@@ -1319,16 +1369,11 @@ function spruceTexture() {
       varying vec2 vUv;
       void main(){
         float n = fbm(vUv * vec2(5.0, 3.0) + vec2(0.0, -uTime * 0.3));
-        float g = smoothstep(0.55, 0.0, vUv.y) * (0.2 + n * 0.8);
-        vec3 c = mix(vec3(0.02, 0.008, 0.004), vec3(0.6, 0.16, 0.03), g * g);
+        float g = smoothstep(0.58, 0.0, vUv.y) * (0.25 + n * 0.75);
+        vec3 c = mix(vec3(0.02, 0.008, 0.004), vec3(0.7, 0.2, 0.04), g * g);
         gl_FragColor = vec4(c, 1.0);
       }`,
-  }), 0, 0.57, 0.302, stove);
-  const logMat = interior({ color: 0x0e0906, emissive: 0xff3a08, emissiveIntensity: 0.12, roughness: 0.95 });
-  for (const [lx, ly, rz] of [[-0.06, 0.39, 0.1], [0.08, 0.42, -0.14]]) {
-    const log = mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.55, 10), logMat, lx, ly, 0.29, stove);
-    log.rotation.z = Math.PI / 2 + rz;
-  }
+  }), 0, 0.72, 0.39, stove);
   const fireMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     uniforms: { uTime: { value: 0 } },
@@ -1338,41 +1383,34 @@ function spruceTexture() {
       varying vec2 vUv;
       void main(){
         vec2 uv = vUv;
-        float n = fbm(vec2(uv.x * 4.0, uv.y * 2.6 - uTime * 2.1));
+        float n = fbm(vec2(uv.x * 4.2, uv.y * 2.8 - uTime * 2.1));
         float n2 = fbm(vec2(uv.x * 9.0 + 3.1, uv.y * 5.0 - uTime * 3.3));
         float xd = abs(uv.x - 0.5) * 2.0;
         float tongues = 0.5 + 0.5 * sin(uv.x * 19.0 + n * 6.0);
-        float body = 0.95 - uv.y * (1.35 - tongues * 0.45) - xd * xd * 1.1;
-        float f = body + (n - 0.5) * 1.0 + (n2 - 0.5) * 0.45;
+        float body = 0.92 - uv.y * (1.35 - tongues * 0.45) - xd * xd * 1.15;
+        float f = body + (n - 0.5) * 0.95 + (n2 - 0.5) * 0.45;
         float a = smoothstep(0.02, 0.22, f);
-        vec3 c = mix(vec3(0.7, 0.08, 0.0), vec3(1.0, 0.42, 0.06), smoothstep(0.05, 0.35, f));
-        c = mix(c, vec3(1.0, 0.86, 0.5), smoothstep(0.35, 0.75, f));
-        gl_FragColor = vec4(c * a * 2.2, 1.0);
+        vec3 c = mix(vec3(0.75, 0.09, 0.0), vec3(1.0, 0.42, 0.06), smoothstep(0.05, 0.35, f));
+        c = mix(c, vec3(1.0, 0.88, 0.55), smoothstep(0.35, 0.75, f));
+        gl_FragColor = vec4(c * a * 2.1, 1.0);
       }`,
   });
-  mesh(new THREE.PlaneGeometry(0.64, 0.46), fireMat, 0, 0.58, 0.305, stove);
-  const frameMat = interior({ color: 0x0c0b0b, roughness: 0.35, metalness: 0.6 });
-  box(0.9, 0.08, 0.04, frameMat, 0, 0.32, 0.31, stove);
-  box(0.9, 0.12, 0.04, frameMat, 0, 0.86, 0.31, stove);
-  box(0.12, 0.5, 0.04, frameMat, -0.39, 0.57, 0.31, stove);
-  box(0.12, 0.5, 0.04, frameMat, 0.39, 0.57, 0.31, stove);
-  mesh(new THREE.PlaneGeometry(0.66, 0.5), interior({ color: 0x221a14, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0.2, depthWrite: false }), 0, 0.57, 0.322, stove);
+  mesh(new THREE.PlaneGeometry(0.40, 0.32), fireMat, 0, 0.72, 0.415, stove);
 
-  const fireGlow = glow(0xff7a30, 2.2, 0.35);
-  fireGlow.position.set(0, 0.6, 0.45);
+  const fireGlow = glow(0xff7a30, 1.9, 0.32);
+  fireGlow.position.set(0, 0.74, 0.50);
   stove.add(fireGlow);
-  const fl = castShadows(new THREE.PointLight(0xff7a2e, 6, 0, 2));
-  fl.position.set(0, 0.6, 0.9);
+  const fl = castShadows(new THREE.PointLight(0xff7a2e, 6.2, 0, 2));
+  fl.position.set(0, 0.72, 0.95);
   stove.add(fl);
   updates.push((t) => {
     fireMat.uniforms.uTime.value = t;
     fireBack.material.uniforms.uTime.value = t;
     const f = 1 + 0.18 * Math.sin(t * 7.1) * Math.sin(t * 2.3 + 1) + 0.1 * Math.sin(t * 13.7 + 2);
-    fl.intensity = 6 * f;
-    fireGlow.material.opacity = 0.32 * f;
-    logMat.emissiveIntensity = 0.1 + 0.06 * f;
+    fl.intensity = 6.2 * f;
+    fireGlow.material.opacity = 0.30 * f;
   });
-  contactShadow(3.95, -0.6, 1.8, 1.6, 0.6);
+  contactShadow(3.92, -0.62, 1.8, 1.6, 0.6);
 }
 
 scene.add(new THREE.HemisphereLight(0xceceda, 0x443633, REAL ? 0.12 : 0.28));

@@ -34,3 +34,9 @@ Site terms, <https://tevy.dev/> and <https://tevy.dev/docs>: all assets are CC0 
 Everything else (plaid, knit, rug, siding, curtained windows, frost, glow, road tracks) is drawn procedurally in `scene.js`, and the audio is synthesized by `audio.py`.
 | Two-Storey Wooden House (v2, LOD0) | https://tevy.dev/models/village-house | 窓外の住宅（`models/village-house-lod0.glb`） | CC0 1.0 | 2026-11-28 |
 | Falu Red Cottage (v2, LOD0) | https://tevy.dev/models/red-cottage | 窓外の住宅（`models/red-cottage-lod0.glb`） | CC0 1.0 | 2026-11-28 |
+| Cast-Iron Wood Stove (v2, LOD1) | https://tevy.dev/models/wood-stove | 室内の薪ストーブ（`models/wood-stove-lod1.glb`） | CC0 1.0 | 2026-11-28 |
+| Gift Box Set (v1, LOD1) | https://tevy.dev/models/gift-box-set | ツリー下のプレゼント箱（`models/gift-box-set-lod1.glb`） | CC0 1.0 | 2026-11-28 |
+| Dried Flowers in Jug (v1, LOD0) | https://tevy.dev/models/dried-flowers-in-jug | テーブル上のドライフラワー花瓶（`models/dried-flowers-lod0.glb`） | CC0 1.0 | 2026-11-28 |
+| Table Lamp (v1, LOD0) | https://tevy.dev/models/table-lamp | ソファ横のテーブルランプ（`models/table-lamp-lod0.glb`） | CC0 1.0 | 2026-11-28 |
+| Snowy Norway Spruce (v1, LOD2) | https://tevy.dev/models/snowy-spruce | 窓外の雪付き針葉樹（`models/snowy-spruce-lod2.glb`） | CC0 1.0 | 2026-11-28 |
+| Book Row with Leaning Book (v1, LOD1) | https://tevy.dev/models/book-row-with-leaning-book | 窓下ベンチの本（`models/books-lod1.glb`） | CC0 1.0 | 2026-11-28 |
