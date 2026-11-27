@@ -16,6 +16,7 @@ const { values: args } = parseArgs({
     h: { type: 'string', default: '1080' },
     still: { type: 'string' },
     cam: { type: 'string' },
+    fx: { type: 'string' },
     out: { type: 'string', default: 'out/cozy-winter.mp4' },
     audio: { type: 'string', default: 'out/ambience.wav' },
   },
@@ -34,7 +35,7 @@ const server = createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const base = `http://127.0.0.1:${server.address().port}/index.html?w=${args.w}&h=${args.h}${args.cam ? `&cam=${args.cam}` : ''}`;
+const base = `http://127.0.0.1:${server.address().port}/index.html?w=${args.w}&h=${args.h}${args.cam ? `&cam=${args.cam}` : ''}${args.fx ? `&fx=${args.fx}` : ''}`;
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: Number(args.w), height: Number(args.h) } });
@@ -54,7 +55,7 @@ async function frameAt(t) {
 
 if (args.still !== undefined) {
   for (const t of args.still.split(',').map(Number)) {
-    const file = join(root, 'out', `still-${t}.png`);
+    const file = join(root, 'out', `still-${t}${args.fx ? `-${args.fx.replaceAll(',', '+')}` : ''}.png`);
     const { writeFile } = await import('node:fs/promises');
     const t0 = Date.now();
     await writeFile(file, await frameAt(t));

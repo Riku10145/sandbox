@@ -6,11 +6,14 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 
 const params = new URLSearchParams(location.search);
 const W = Number(params.get('w') ?? 1920);
 const H = Number(params.get('h') ?? 1080);
 const DURATION = 10;
+const FX = new Set((params.get('fx') ?? 'shadow,gtao,env').split(','));
+const REAL = FX.size > 0 && !FX.has('none');
 
 let seed = 20261127;
 function rand(a = 0, b = 1) {
@@ -27,6 +30,20 @@ renderer.setPixelRatio(1);
 renderer.setSize(W, H);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.92;
+renderer.shadowMap.enabled = FX.has('shadow');
+renderer.shadowMap.type = THREE.PCFShadowMap;
+
+function castShadows(light, size = 1024) {
+  if (!FX.has('shadow')) return light;
+  light.castShadow = true;
+  light.shadow.mapSize.set(size, size);
+  light.shadow.radius = 6;
+  light.shadow.bias = -0.0015;
+  light.shadow.normalBias = 0.02;
+  light.shadow.camera.near = 0.05;
+  light.shadow.camera.far = 14;
+  return light;
+}
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -476,7 +493,7 @@ const flameMat = (s) => new THREE.ShaderMaterial({
     }`,
 });
 
-function candle({ x, y, z, r = 0.045, h = 0.1, jar = false, light = 0, s = rand(0, 100) }) {
+function candle({ x, y, z, r = 0.045, h = 0.1, jar = false, light = 0, shadow = false, s = rand(0, 100) }) {
   const g = new THREE.Group();
   g.position.set(x, y, z);
   scene.add(g);
@@ -497,6 +514,7 @@ function candle({ x, y, z, r = 0.045, h = 0.1, jar = false, light = 0, s = rand(
   let pl = null;
   if (light) {
     pl = new THREE.PointLight(0xffa155, light, 0, 2);
+    if (shadow) castShadows(pl, 512);
     pl.position.set(0, h + 0.12, 0);
     g.add(pl);
   }
@@ -629,7 +647,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
     billboard(steam);
     updates.push((t) => { sm.uniforms.uTime.value = t; });
   }
-  candle({ x: 0.55, y: 0.505, z: 2.15, r: 0.055, h: 0.11, jar: true, light: 0.7 });
+  candle({ x: 0.55, y: 0.505, z: 2.15, r: 0.055, h: 0.11, jar: true, light: 0.7, shadow: true });
 
   const vase = new THREE.Group();
   vase.position.set(0.95, 0.505, 1.85);
@@ -704,11 +722,11 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   mesh(new THREE.LatheGeometry(base, 32), interior({ color: 0x3a2214, roughness: 0.3, metalness: 0.2 }), 0, 0.72, 0, lamp);
   const shade = mesh(new THREE.CylinderGeometry(0.2, 0.34, 0.38, 40, 1, true),
     interior({ color: 0xf0c890, emissive: 0xffa040, emissiveIntensity: 1.4, roughness: 1, side: THREE.DoubleSide }), 0, 1.45, 0, lamp);
-  shade.castShadow = false;
+  shade.userData.noShadow = true;
   const bulbGlow = glow(0xffb060, 1.8, 0.35);
   bulbGlow.position.set(0, 1.4, 0);
   lamp.add(bulbGlow);
-  const pl = new THREE.PointLight(0xffa452, 5, 0, 2);
+  const pl = castShadows(new THREE.PointLight(0xffa452, 5, 0, 2));
   pl.position.set(0, 1.35, 0.15);
   lamp.add(pl);
   contactShadow(-3.45, -1.9, 1.0, 0.9, 0.7);
@@ -854,7 +872,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   starGlow.position.set(0, TOP + 0.08, 0.05);
   tree.add(starGlow);
 
-  const tl = new THREE.PointLight(0xffb060, 5, 0, 2);
+  const tl = castShadows(new THREE.PointLight(0xffb060, 5, 0, 2));
   tl.position.set(-0.4, 1.5, 0.9);
   tree.add(tl);
   updates.push((t) => {
@@ -947,7 +965,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   const fireGlow = glow(0xff7a30, 2.2, 0.35);
   fireGlow.position.set(0, 0.6, 0.45);
   stove.add(fireGlow);
-  const fl = new THREE.PointLight(0xff7a2e, 6, 0, 2);
+  const fl = castShadows(new THREE.PointLight(0xff7a2e, 6, 0, 2));
   fl.position.set(0, 0.6, 0.9);
   stove.add(fl);
   updates.push((t) => {
@@ -961,8 +979,17 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   contactShadow(3.95, -0.6, 1.8, 1.6, 0.6);
 }
 
-scene.add(new THREE.HemisphereLight(0xffd8c0, 0x3a2418, 0.28));
-scene.add(new THREE.AmbientLight(0x6a4028, 0.12));
+scene.add(new THREE.HemisphereLight(0xffd8c0, 0x3a2418, REAL ? 0.12 : 0.28));
+if (!REAL) scene.add(new THREE.AmbientLight(0x6a4028, 0.12));
+
+const AO_LAYER = 1;
+scene.traverse((o) => {
+  if (!o.isMesh || !o.material.isMeshStandardMaterial || o.material.transparent) return;
+  o.layers.enable(AO_LAYER);
+  if (!FX.has('shadow') || o.userData.noShadow) return;
+  o.castShadow = true;
+  o.receiveShadow = true;
+});
 
 // ---------- post ----------
 const target = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 4 });
@@ -970,6 +997,19 @@ const composer = new EffectComposer(renderer, target);
 composer.setPixelRatio(1);
 composer.setSize(W, H);
 composer.addPass(new RenderPass(scene, camera));
+if (FX.has('gtao')) {
+  const aoCamera = camera.clone();
+  aoCamera.layers.set(AO_LAYER);
+  updates.push(() => {
+    aoCamera.position.copy(camera.position);
+    aoCamera.quaternion.copy(camera.quaternion);
+    aoCamera.updateMatrixWorld();
+  });
+  const gtao = new GTAOPass(scene, aoCamera, W, H);
+  gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.2, samples: 16 });
+  gtao.blendIntensity = 1.0;
+  composer.addPass(gtao);
+}
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.42, 0.55, 0.92));
 composer.addPass(new OutputPass());
 const grade = new ShaderPass({
@@ -1011,6 +1051,14 @@ function renderAt(t) {
   grade.uniforms.uTime.value = t;
   grade.uniforms.uFade.value = smooth(0, 0.9, t) * (1 - smooth(DURATION - 0.8, DURATION, t));
   composer.render();
+}
+
+if (FX.has('env')) {
+  for (const u of updates) u(5);
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(scene, 0.04, 0.05, 60, { size: 256, position: new THREE.Vector3(0.4, 1.3, 1.2) }).texture;
+  scene.environmentIntensity = 0.55;
+  pmrem.dispose();
 }
 
 window.DURATION = DURATION;

@@ -14,6 +14,8 @@ The clip is written to `out/cozy-winter.mp4` at 1920x1080, 30 fps, with a synthe
 
 `node record.mjs --still 0.5,5` writes single frames to `out/still-<t>.png`. Add `--cam x,y,z,tx,ty,tz` to look at one spot up close, for example `--cam 2.6,0.9,0.6,3.95,0.6,-0.75` for the stove.
 
+`--fx` picks the realism effects. The default is `shadow,gtao,env`. Use `--fx none` for the flat look, or one name to see a single effect.
+
 To watch it live, serve this folder over HTTP and open `index.html?preview`.
 
 ## How it works
