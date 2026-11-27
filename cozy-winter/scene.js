@@ -905,13 +905,13 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
       varying vec2 vUv;
       void main(){
         float n = fbm(vUv * vec2(5.0, 3.0) + vec2(0.0, -uTime * 0.3));
-        float g = smoothstep(1.0, 0.0, vUv.y) * (0.35 + n * 0.7);
-        vec3 c = mix(vec3(0.05, 0.01, 0.0), vec3(1.4, 0.45, 0.08), g);
+        float g = smoothstep(0.55, 0.0, vUv.y) * (0.2 + n * 0.8);
+        vec3 c = mix(vec3(0.02, 0.008, 0.004), vec3(0.6, 0.16, 0.03), g * g);
         gl_FragColor = vec4(c, 1.0);
       }`,
   }), 0, 0.57, 0.302, stove);
-  const logMat = interior({ color: 0x1a120c, emissive: 0xff3a08, emissiveIntensity: 0.12, roughness: 0.9 });
-  for (const [lx, ly, rz] of [[-0.06, 0.37, 0.12], [0.08, 0.4, -0.18]]) {
+  const logMat = interior({ color: 0x0e0906, emissive: 0xff3a08, emissiveIntensity: 0.12, roughness: 0.95 });
+  for (const [lx, ly, rz] of [[-0.06, 0.39, 0.1], [0.08, 0.42, -0.14]]) {
     const log = mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.55, 10), logMat, lx, ly, 0.29, stove);
     log.rotation.z = Math.PI / 2 + rz;
   }
@@ -928,22 +928,21 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
         float n2 = fbm(vec2(uv.x * 9.0 + 3.1, uv.y * 5.0 - uTime * 3.3));
         float xd = abs(uv.x - 0.5) * 2.0;
         float tongues = 0.5 + 0.5 * sin(uv.x * 19.0 + n * 6.0);
-        float body = 1.05 - uv.y * (1.25 - tongues * 0.35) - xd * xd * 0.9;
+        float body = 0.95 - uv.y * (1.35 - tongues * 0.45) - xd * xd * 1.1;
         float f = body + (n - 0.5) * 1.0 + (n2 - 0.5) * 0.45;
-        float a = smoothstep(0.0, 0.3, f);
-        vec3 c = mix(vec3(0.55, 0.06, 0.0), vec3(1.0, 0.42, 0.06), smoothstep(0.05, 0.35, f));
+        float a = smoothstep(0.02, 0.22, f);
+        vec3 c = mix(vec3(0.7, 0.08, 0.0), vec3(1.0, 0.42, 0.06), smoothstep(0.05, 0.35, f));
         c = mix(c, vec3(1.0, 0.86, 0.5), smoothstep(0.35, 0.75, f));
-        gl_FragColor = vec4(c * a * 3.4, 1.0);
+        gl_FragColor = vec4(c * a * 2.2, 1.0);
       }`,
   });
-  const fire = mesh(new THREE.PlaneGeometry(0.64, 0.46), fireMat, 0, 0.58, 0.305, stove);
-  fire.renderOrder = 2;
+  mesh(new THREE.PlaneGeometry(0.64, 0.46), fireMat, 0, 0.58, 0.305, stove);
   const frameMat = interior({ color: 0x0c0b0b, roughness: 0.35, metalness: 0.6 });
   box(0.9, 0.08, 0.04, frameMat, 0, 0.32, 0.31, stove);
   box(0.9, 0.12, 0.04, frameMat, 0, 0.86, 0.31, stove);
   box(0.12, 0.5, 0.04, frameMat, -0.39, 0.57, 0.31, stove);
   box(0.12, 0.5, 0.04, frameMat, 0.39, 0.57, 0.31, stove);
-  mesh(new THREE.PlaneGeometry(0.66, 0.5), interior({ color: 0x221a14, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0.2 }), 0, 0.57, 0.322, stove);
+  mesh(new THREE.PlaneGeometry(0.66, 0.5), interior({ color: 0x221a14, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0.2, depthWrite: false }), 0, 0.57, 0.322, stove);
 
   const fireGlow = glow(0xff7a30, 2.2, 0.35);
   fireGlow.position.set(0, 0.6, 0.45);
@@ -997,6 +996,7 @@ composer.addPass(grade);
 const camFrom = { p: new THREE.Vector3(0.35, 1.68, 6.4), t: new THREE.Vector3(0.35, 1.22, -3) };
 const camTo = { p: new THREE.Vector3(0.05, 1.6, 5.75), t: new THREE.Vector3(0.15, 1.28, -3) };
 const look = new THREE.Vector3();
+const debugCam = params.get('cam')?.split(',').map(Number);
 
 function renderAt(t) {
   const k = smooth(0, DURATION, t);
@@ -1004,6 +1004,7 @@ function renderAt(t) {
   camera.position.y += Math.sin(t * 0.7) * 0.008;
   camera.position.x += Math.sin(t * 0.43 + 1) * 0.01;
   look.lerpVectors(camFrom.t, camTo.t, k);
+  if (debugCam) { camera.position.set(...debugCam.slice(0, 3)); look.set(...debugCam.slice(3)); }
   camera.lookAt(look);
   camera.updateMatrixWorld();
   for (const u of updates) u(t);

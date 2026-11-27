@@ -12,7 +12,7 @@ node record.mjs
 
 The clip is written to `out/cozy-winter.mp4` at 1920x1080, 30 fps, with a synthesized fire-crackle and wind track.
 
-`node record.mjs --still 0.5,5` writes single frames to `out/still-<t>.png`.
+`node record.mjs --still 0.5,5` writes single frames to `out/still-<t>.png`. Add `--cam x,y,z,tx,ty,tz` to look at one spot up close, for example `--cam 2.6,0.9,0.6,3.95,0.6,-0.75` for the stove.
 
 To watch it live, serve this folder over HTTP and open `index.html?preview`.
 

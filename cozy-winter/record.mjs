@@ -15,6 +15,7 @@ const { values: args } = parseArgs({
     w: { type: 'string', default: '1920' },
     h: { type: 'string', default: '1080' },
     still: { type: 'string' },
+    cam: { type: 'string' },
     out: { type: 'string', default: 'out/cozy-winter.mp4' },
     audio: { type: 'string', default: 'out/ambience.wav' },
   },
@@ -33,7 +34,7 @@ const server = createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const base = `http://127.0.0.1:${server.address().port}/index.html?w=${args.w}&h=${args.h}`;
+const base = `http://127.0.0.1:${server.address().port}/index.html?w=${args.w}&h=${args.h}${args.cam ? `&cam=${args.cam}` : ''}`;
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: Number(args.w), height: Number(args.h) } });
