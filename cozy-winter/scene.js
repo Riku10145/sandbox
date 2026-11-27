@@ -112,6 +112,26 @@ const glass = (opts) => new THREE.MeshPhysicalMaterial({
   fog: false, color: 0xfff6ea, roughness: 0.06, transmission: 1, thickness: 0.004, ior: 1.5, depthWrite: false, ...opts,
 });
 
+const texLoader = new THREE.TextureLoader();
+async function pbrSet(id) {
+  const [map, normalMap, roughnessMap] = await Promise.all(
+    ['Diffuse.jpg', 'nor_gl.jpg', 'Rough.jpg'].map((f) => texLoader.loadAsync(`./textures/${id}/${f}`)),
+  );
+  map.colorSpace = THREE.SRGBColorSpace;
+  for (const t of [map, normalMap, roughnessMap]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
+  return { map, normalMap, roughnessMap };
+}
+function tiled(set, rx, ry, keys = ['map', 'normalMap', 'roughnessMap']) {
+  return Object.fromEntries(keys.map((k) => {
+    const t = set[k].clone();
+    t.repeat.set(rx, ry);
+    return [k, t];
+  }));
+}
+const [OAK, WALNUT, FLEECE, LINEN, WALL, SNOW] = await Promise.all(
+  ['oak_wood_planks', 'walnut_veneer', 'polar_fleece', 'rough_linen', 'beige_wall_001', 'snow_02'].map(pbrSet),
+);
+
 function blobNoise(size, count, rMin, rMax, repeat) {
   return canvasTexture(size, size, (g, w, h) => {
     g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
@@ -125,28 +145,6 @@ function blobNoise(size, count, rMin, rMax, repeat) {
     }
   }, { repeat, color: false });
 }
-
-function weave(repeat, cell = 8) {
-  return canvasTexture(256, 256, (g, w, h) => {
-    for (let y = 0; y < h; y += cell) {
-      for (let x = 0; x < w; x += cell) {
-        const across = ((x + y) / cell) % 2 === 0;
-        const grd = across ? g.createLinearGradient(0, y, 0, y + cell) : g.createLinearGradient(x, 0, x + cell, 0);
-        const hi = Math.round(rand(190, 235));
-        grd.addColorStop(0, '#3a3a3a'); grd.addColorStop(0.5, `rgb(${hi},${hi},${hi})`); grd.addColorStop(1, '#3a3a3a');
-        g.fillStyle = grd; g.fillRect(x, y, cell, cell);
-      }
-    }
-  }, { repeat, color: false });
-}
-
-const grainRough = canvasTexture(512, 512, (g, w, h) => {
-  g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 3000; i++) {
-    g.fillStyle = `rgba(${pick(['30,30,30', '230,230,230'])},${rand(0.03, 0.1)})`;
-    g.fillRect(rand(0, w), rand(0, h), rand(20, 160), rand(1, 3));
-  }
-}, { repeat: [2.5, 2.5], color: false });
 
 function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene) {
   const m = new THREE.Mesh(geo, mat);
@@ -209,22 +207,23 @@ const floorTex = canvasTexture(1024, 1024, (g, w, h) => {
 }, { repeat: [2.5, 2.5] });
 
 const floor = mesh(new THREE.PlaneGeometry(ROOM.right - ROOM.left, ROOM.front - ROOM.back),
-  interior({ map: floorTex, roughness: 0.85, roughnessMap: grainRough, bumpMap: floorTex, bumpScale: 0.7, color: 0xc8a888 }),
+  interior({ ...tiled(OAK, (ROOM.right - ROOM.left) / 1.2, (ROOM.front - ROOM.back) / 1.2), roughness: 1, color: 0xe2c8ae }),
   (ROOM.left + ROOM.right) / 2, 0, (ROOM.front + ROOM.back) / 2);
 floor.rotation.x = -Math.PI / 2;
 
-const wallMat = interior({ color: 0xbfa68a, roughness: 0.92, bumpMap: blobNoise(512, 1400, 3, 18, [5, 3]), bumpScale: 0.5 });
+const wallMat = (w, h) => interior({ ...tiled(WALL, w / 3, h / 3), color: 0xfff2e2, roughness: 1 });
+const wallBox = (w, h, d, x, y, z) => box(w, h, d, wallMat(Math.max(w, d), h), x, y, z);
 const trimMat = interior({ color: 0xe6d6bd, roughness: 0.6 });
 const T = 0.22;
 function box(w, h, d, mat, x, y, z, parent = scene) {
   return mesh(new THREE.BoxGeometry(w, h, d), mat, x, y, z, parent);
 }
-box(ROOM.right - ROOM.left, WIN.y0, T, wallMat, (ROOM.left + ROOM.right) / 2, WIN.y0 / 2, ROOM.back - T / 2);
-box(ROOM.right - ROOM.left, ROOM.ceil - WIN.y1, T, wallMat, (ROOM.left + ROOM.right) / 2, (WIN.y1 + ROOM.ceil) / 2, ROOM.back - T / 2);
-box(WIN.x0 - ROOM.left, WIN.y1 - WIN.y0, T, wallMat, (ROOM.left + WIN.x0) / 2, (WIN.y0 + WIN.y1) / 2, ROOM.back - T / 2);
-box(ROOM.right - WIN.x1, WIN.y1 - WIN.y0, T, wallMat, (WIN.x1 + ROOM.right) / 2, (WIN.y0 + WIN.y1) / 2, ROOM.back - T / 2);
-box(T, ROOM.ceil, ROOM.front - ROOM.back, wallMat, ROOM.left - T / 2, ROOM.ceil / 2, (ROOM.front + ROOM.back) / 2);
-box(T, ROOM.ceil, ROOM.front - ROOM.back, wallMat, ROOM.right + T / 2, ROOM.ceil / 2, (ROOM.front + ROOM.back) / 2);
+wallBox(ROOM.right - ROOM.left, WIN.y0, T, (ROOM.left + ROOM.right) / 2, WIN.y0 / 2, ROOM.back - T / 2);
+wallBox(ROOM.right - ROOM.left, ROOM.ceil - WIN.y1, T, (ROOM.left + ROOM.right) / 2, (WIN.y1 + ROOM.ceil) / 2, ROOM.back - T / 2);
+wallBox(WIN.x0 - ROOM.left, WIN.y1 - WIN.y0, T, (ROOM.left + WIN.x0) / 2, (WIN.y0 + WIN.y1) / 2, ROOM.back - T / 2);
+wallBox(ROOM.right - WIN.x1, WIN.y1 - WIN.y0, T, (WIN.x1 + ROOM.right) / 2, (WIN.y0 + WIN.y1) / 2, ROOM.back - T / 2);
+wallBox(T, ROOM.ceil, ROOM.front - ROOM.back, ROOM.left - T / 2, ROOM.ceil / 2, (ROOM.front + ROOM.back) / 2);
+wallBox(T, ROOM.ceil, ROOM.front - ROOM.back, ROOM.right + T / 2, ROOM.ceil / 2, (ROOM.front + ROOM.back) / 2);
 box(ROOM.right - ROOM.left, T, ROOM.front - ROOM.back, interior({ color: 0x9c7a58, roughness: 1 }),
   (ROOM.left + ROOM.right) / 2, ROOM.ceil + T / 2, (ROOM.front + ROOM.back) / 2);
 box(ROOM.right - ROOM.left, 0.12, 0.04, trimMat, (ROOM.left + ROOM.right) / 2, 0.06, ROOM.back + 0.02);
@@ -279,19 +278,6 @@ const skyEnv = (() => {
 
 const outdoor = (opts) => new THREE.MeshStandardMaterial({ envMap: skyEnv, envMapIntensity: 1, roughness: 0.9, ...opts });
 
-const snowBump = canvasTexture(512, 512, (g, w, h) => {
-  g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 1800; i++) {
-    const v = pick([60, 200]);
-    const r = rand(4, 28);
-    const x = rand(0, w), y = rand(0, h);
-    const grd = g.createRadialGradient(x, y, 0, x, y, r);
-    grd.addColorStop(0, `rgba(${v},${v},${v},${rand(0.08, 0.25)})`);
-    grd.addColorStop(1, `rgba(${v},${v},${v},0)`);
-    g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-}, { repeat: [3, 3], color: false });
-
 const groundTex = canvasTexture(2048, 2048, (g, w, h) => {
   const X = (x) => (x + 40) / 80 * w;
   const Z = (z) => (z + 3.3) / -80 * h;
@@ -318,18 +304,16 @@ const groundTex = canvasTexture(2048, 2048, (g, w, h) => {
   for (const off of [-4.1, 4.1]) { path(off); g.stroke(); }
 });
 {
-  const bump = snowBump.clone();
-  bump.repeat.set(70, 70);
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(80, 80),
-    outdoor({ map: groundTex, bumpMap: bump, bumpScale: 2, roughness: 0.85 }),
+    outdoor({ map: groundTex, ...tiled(SNOW, 40, 40, ['normalMap', 'roughnessMap']), roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, GROUND_Y, -3.3 - 40);
   scene.add(ground);
 }
 
-const snowWhite = outdoor({ color: 0xf4efed, bumpMap: snowBump, bumpScale: 1.5 });
+const snowWhite = outdoor({ color: 0xf4efed, ...tiled(SNOW, 1, 1, ['normalMap', 'roughnessMap']), roughness: 1 });
 const barkCol = new THREE.Color(0x2e231e);
 const snowCol = new THREE.Color(0xf0ebe9);
 
@@ -720,7 +704,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }, { repeat: [5, 4] });
 
 {
-  const fabric = cloth({ color: 0xcdb89e, bumpMap: weave([18, 18]), bumpScale: 0.5 });
+  const fabric = cloth({ ...tiled(FLEECE, 6, 6), color: 0xf2e4d0 });
   const sofa = new THREE.Group();
   sofa.position.set(-1.95, 0, 2.6);
   scene.add(sofa);
@@ -731,7 +715,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   back.rotation.z = 0.12;
   mesh(new RoundedBoxGeometry(1.25, 0.62, 0.32, 4, 0.14), fabric, 0, 0.55, -2.15, sofa);
   for (const [px, pz, ry] of [[-0.18, -1.4, 0.25], [-0.2, -0.75, -0.15]]) {
-    const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), cloth({ map: plaidTex, bumpMap: weave([10, 10], 4), bumpScale: 0.4 }), px, 0.95, pz, sofa);
+    const p = mesh(new RoundedBoxGeometry(0.17, 0.52, 0.55, 4, 0.08), cloth({ map: plaidTex, ...tiled(LINEN, 2, 2, ['normalMap', 'roughnessMap']) }), px, 0.95, pz, sofa);
     p.rotation.set(0, ry, 0.28);
   }
   const knit = cloth({ map: knitTex, bumpMap: knitTex, bumpScale: 3, color: 0xf0e4d0, sheenRoughness: 0.6 });
@@ -743,7 +727,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
 }
 
 {
-  const wood = interior({ color: 0x6a4428, roughness: 0.75, roughnessMap: grainRough, map: floorTex, bumpMap: floorTex, bumpScale: 0.4 });
+  const wood = interior({ ...tiled(WALNUT, 1, 1), roughness: 0.9 });
   const table = new THREE.Group();
   table.position.set(0.45, 0, 2.35);
   scene.add(table);
@@ -852,7 +836,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   const side = new THREE.Group();
   side.position.set(-1.25, 0, -2.45);
   scene.add(side);
-  const wood = interior({ color: 0x6b4a2e, roughness: 0.6 });
+  const wood = interior({ ...tiled(WALNUT, 0.7, 0.7), roughness: 0.9, color: 0xc8a890 });
   box(1.3, 0.05, 0.42, wood, 0, 0.58, 0, side);
   box(1.3, 0.04, 0.42, wood, 0, 0.04, 0, side);
   box(0.05, 0.56, 0.42, wood, -0.63, 0.3, 0, side);
@@ -880,7 +864,7 @@ const knitTex = canvasTexture(256, 256, (g, w, h) => {
   const lamp = new THREE.Group();
   lamp.position.set(-3.45, 0, -1.9);
   scene.add(lamp);
-  const wood = interior({ color: 0x5a3c24, roughness: 0.6 });
+  const wood = interior({ ...tiled(WALNUT, 0.4, 0.4), roughness: 0.9, color: 0xb09080 });
   box(0.6, 0.72, 0.55, wood, 0, 0.36, 0, lamp);
   const base = [[0, 0], [0.12, 0], [0.13, 0.05], [0.09, 0.12], [0.11, 0.3], [0.05, 0.42], [0.02, 0.5], [0, 0.5]].map(([a, b]) => new THREE.Vector2(a, b));
   mesh(new THREE.LatheGeometry(base, 32), interior({ color: 0x3a2214, roughness: 0.3, metalness: 0.2 }), 0, 0.72, 0, lamp);
