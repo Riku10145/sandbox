@@ -1,0 +1,11 @@
+{
+  "name": "cozy-winter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node record.mjs"
+  },
+  "dependencies": {
+    "three": "0.187.0"
+  }
+}
